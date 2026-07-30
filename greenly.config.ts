@@ -1,5 +1,5 @@
 import { defineConfig } from "greenly";
-import { checkVersion } from "./scripts/checks";
+import { checkVersion } from "./scripts/version";
 
 export default defineConfig({
   name: "greenly",

@@ -48,11 +48,14 @@ async function main(): Promise<void> {
   try {
     const { config } = await loadGreenlyConfig();
     const { exitCode } = await runChecks(config, mode);
-    process.exit(exitCode);
+    // Set exitCode instead of process.exit() so pending async handles (e.g. an
+    // undici socket left open by a fetch in a function check) close cleanly.
+    process.exitCode = exitCode;
   } catch (error) {
     if (error instanceof ConfigNotFoundError || error instanceof ConfigInvalidError) {
       console.error(colors.red(error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     throw error;
   }
