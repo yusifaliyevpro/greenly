@@ -4,6 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    "paths": {
+      "greenly": ["./src/index.ts"]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "esModuleInterop": true,
@@ -11,6 +14,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "greenly.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

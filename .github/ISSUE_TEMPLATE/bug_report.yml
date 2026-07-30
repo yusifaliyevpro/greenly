@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a problem with greenly
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug report.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps to reproduce, ideally your greenly.config and the command you ran.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: greenly-version
+    attributes:
+      label: greenly version
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, package manager, and OS.
+      placeholder: e.g. Node 24, pnpm 11, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Any relevant terminal output. Paste as text, not a screenshot.
+      render: shell
