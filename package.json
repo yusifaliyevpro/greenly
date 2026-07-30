@@ -1,0 +1,49 @@
+{
+  "name": "greenly",
+  "version": "0.0.1",
+  "bugs": {
+    "url": "https://github.com/yusifaliyevpro/greenly/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Yusif Aliyev",
+    "email": "yusifaliyevpro@gmail.com",
+    "url": "https://yusifaliyevpro.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yusifaliyevpro/greenly.git"
+  },
+  "funding": [
+    {
+      "type": "patreon",
+      "url": "https://patreon.com/yusifaliyevpro"
+    },
+    {
+      "type": "kofe.al",
+      "url": "https://kofe.al/@yusifaliyevpro"
+    }
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "tsdown": "0.22.14",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
