@@ -4,6 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    "paths": {
+      "greenly": ["./src/index.ts"]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "esModuleInterop": true,
