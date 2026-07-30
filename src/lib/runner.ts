@@ -183,7 +183,8 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       });
       if (isCancel(answer)) {
         cancel("Aborted.");
-        process.exit(1);
+        const failedSoFar = results.filter((r) => r.status === "failed").length;
+        return { results, failed: failedSoFar, exitCode: 1 };
       }
       shouldFix = answer;
     }

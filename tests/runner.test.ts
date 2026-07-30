@@ -145,4 +145,25 @@ describe("runChecks", () => {
     expect(mockConfirm).not.toHaveBeenCalled();
     expect(result.results[0].status).toBe("failed");
   });
+
+  it("does not hang on a non-interactive run with a fixable failure", async () => {
+    // A real prompt blocks on stdin. If the runner ever awaited it here, this
+    // never-resolving confirm would hang the run and the test would time out.
+    mockConfirm.mockReturnValue(new Promise(() => {}));
+    const result = await runChecks(config([{ name: "A", command: "fail", onFail: "fixup" }]), {
+      interactive: false,
+    });
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("does not hang with --yes even with a fixable failure", async () => {
+    mockConfirm.mockReturnValue(new Promise(() => {}));
+    const result = await runChecks(config([{ name: "A", command: "fail", onFail: "fixup" }]), {
+      autoFix: true,
+      interactive: false,
+    });
+    expect(mockConfirm).not.toHaveBeenCalled();
+    expect(result.results[0].status).toBe("fixed");
+  });
 });

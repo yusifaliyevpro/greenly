@@ -1,6 +1,6 @@
 {
   "name": "greenly",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Config-driven project check runner. Define your lint/format/typecheck/test steps in greenly.config.ts and run them with one command.",
   "keywords": [
     "check",
@@ -81,7 +81,7 @@
     "@types/node": "24.13.3",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
-    "oxlint-tsgolint": "^7.0.2001",
+    "oxlint-tsgolint": "7.0.2001",
     "tsdown": "0.22.14",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
