@@ -1,6 +1,21 @@
 {
   "name": "greenly",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "Config-driven project check runner. Define your lint/format/typecheck/test steps in greenly.config.ts and run them with one command.",
+  "keywords": [
+    "check",
+    "checks",
+    "ci",
+    "cli",
+    "format",
+    "lint",
+    "pr-checks",
+    "pre-commit",
+    "pre-push",
+    "task-runner",
+    "typecheck"
+  ],
+  "homepage": "https://github.com/yusifaliyevpro/greenly#readme",
   "bugs": {
     "url": "https://github.com/yusifaliyevpro/greenly/issues"
   },
@@ -24,7 +39,26 @@
       "url": "https://kofe.al/@yusifaliyevpro"
     }
   ],
+  "bin": {
+    "greenly": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -33,7 +67,15 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+    "lint:fix": "oxlint --fix",
+    "check": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.7.0",
+    "c12": "3.3.4"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
@@ -41,7 +83,8 @@
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "^7.0.2001",
     "tsdown": "0.22.14",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=18"
