@@ -22,8 +22,5 @@ export default defineConfig([
       entryFileNames: "cli.js",
       comments: false,
     },
-    deps: {
-      neverBundle: ["@clack/prompts", "c12"],
-    },
   },
 ]);

@@ -11,6 +11,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "tests/**/*", "greenly.config.ts"],
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "greenly.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

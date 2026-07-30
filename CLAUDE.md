@@ -46,11 +46,14 @@ export default defineConfig({
 });
 ```
 
-- `command` is a raw shell string the user writes (no package-manager prefixing).
+- `command` is a raw shell string (no package-manager prefixing), OR a function
+  (`() => void | Promise<void>`) run in-process that must throw/reject to fail.
 - `onFail` is `string | (ctx) => void | Promise<void>`; prompted Yes/No before running.
 - `optional: true` warns on failure but never fails the overall run.
 - The repo dogfoods itself via its own `greenly.config.ts`; that `import "greenly"` resolves through
   the package's own `exports` (Node self-referencing) after a build.
+- `greenly.config.ts` stays minimal (only the `defineConfig` export). Custom function checks live in
+  `scripts/` (e.g. `scripts/checks.ts` exports `checkVersion`) and are imported into the config.
 
 ## Runner behavior (important details)
 

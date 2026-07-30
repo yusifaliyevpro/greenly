@@ -53,14 +53,29 @@ Or wire it into your scripts so `pnpm check` works too:
 
 ## Config reference
 
-| Field               | Type                                       | Description                                              |
-| ------------------- | ------------------------------------------ | -------------------------------------------------------- |
-| `name`              | `string?`                                  | Project name shown in the banner.                        |
-| `checks`            | `Check[]`                                  | Ordered list of checks.                                  |
-| `checks[].name`     | `string`                                   | Label shown while running and in the summary.            |
-| `checks[].command`  | `string`                                   | Shell command to run, e.g. `"pnpm tsc --noEmit"`.        |
-| `checks[].onFail`   | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.  |
-| `checks[].optional` | `boolean?`                                 | When `true`, a failure warns instead of failing the run. |
+| Field               | Type                                       | Description                                                               |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `name`              | `string?`                                  | Project name shown in the banner.                                         |
+| `checks`            | `Check[]`                                  | Ordered list of checks.                                                   |
+| `checks[].name`     | `string`                                   | Label shown while running and in the summary.                             |
+| `checks[].command`  | `string \| () => void \| Promise<void>`    | Shell command (e.g. `"pnpm tsc --noEmit"`), or a function run in-process. |
+| `checks[].onFail`   | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.                   |
+| `checks[].optional` | `boolean?`                                 | When `true`, a failure warns instead of failing the run.                  |
+
+`command` can be a function instead of a shell string. It may be async, and it must **throw** (or reject) to mark the check as failed. When it throws, greenly prints only the error's `message` (and its `cause` if present) - not a stack trace - so make the message descriptive:
+
+```ts
+export default defineConfig({
+  checks: [
+    {
+      name: "Env vars",
+      command: () => {
+        if (!process.env.API_KEY) throw new Error("API_KEY is not set");
+      },
+    },
+  ],
+});
+```
 
 `onFail` can also be a function, useful for custom fix logic:
 

@@ -49,10 +49,20 @@ interface CommandResult {
 }
 
 /**
- * Run a command with stdout streamed live and stderr buffered, so the package
- * manager's own `$ <script>` echo stays hidden unless the check fails.
+ * Run a check's command. A shell string streams stdout live with stderr
+ * buffered (so the package manager's own `$ <script>` echo stays hidden unless
+ * the check fails); a function runs in-process and fails only if it throws.
  */
-function runCommand(command: string): CommandResult {
+async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResult> {
+  if (typeof command === "function") {
+    try {
+      await command();
+      return { ok: true, stderr: "" };
+    } catch (error) {
+      return { ok: false, stderr: colors.red(formatThrown(error)) };
+    }
+  }
+
   try {
     execSync(command, { stdio: ["inherit", "inherit", "pipe"], encoding: "utf8" });
     return { ok: true, stderr: "" };
@@ -65,6 +75,39 @@ function runCommand(command: string): CommandResult {
     }
     return { ok: false, stderr };
   }
+}
+
+/** Readable string for an unknown value, JSON-encoding plain objects. */
+function describeUnknown(value: unknown): string {
+  if (value instanceof Error) return value.message || value.name;
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "[object]";
+    }
+  }
+  return String(value);
+}
+
+/**
+ * Format a value thrown by a function command as its message (plus cause),
+ * without the stack trace. Rejections and non-Error throws are handled too.
+ */
+function formatThrown(error: unknown): string {
+  if (error instanceof Error) {
+    let message = error.message || error.name;
+    if (error.cause !== undefined) message += `\nCause: ${describeUnknown(error.cause)}`;
+    return message;
+  }
+  return describeUnknown(error);
+}
+
+/** How the check's command is shown under its name. */
+function commandLine(command: GreenlyCheck["command"]): string {
+  if (typeof command === "string") return `$ ${command}`;
+  return command.name ? `→ ${command.name}()` : "→ (function)";
 }
 
 /** Run a check's `onFail` fixer (command string or function). Returns true on success. */
@@ -107,9 +150,9 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
 
   for (const check of config.checks) {
     console.log(colors.bold(colors.yellow(`▶ ${check.name}`)));
-    console.log(`  ${colors.cyan(`$ ${check.command}`)}\n`);
+    console.log(`  ${colors.cyan(commandLine(check.command))}\n`);
 
-    const { ok, stderr } = runCommand(check.command);
+    const { ok, stderr } = await runCommand(check.command);
 
     if (ok) {
       console.log(`\n${colors.green(`✔ PASSED: ${check.name}`)}\n`);

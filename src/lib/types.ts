@@ -16,7 +16,8 @@ export type OnFailFn = (ctx: OnFailContext) => void | Promise<void>;
 
 /**
  * A function run in-process as a check, instead of a shell command. May be
- * async. Throw (or reject) to mark the check as failed; return to pass.
+ * async. Throw (or reject) to mark the check as failed; return to pass. On
+ * failure only the error's `message` (and `cause`) is shown, not a stack trace.
  */
 export type CommandFn = () => void | Promise<void>;
 

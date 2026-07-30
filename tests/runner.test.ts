@@ -47,6 +47,35 @@ describe("runChecks", () => {
     expect(result.results[0].status).toBe("passed");
   });
 
+  it("passes when a function command resolves", async () => {
+    const fn = vi.fn(async () => {});
+    const result = await runChecks(config([{ name: "A", command: fn }]), { interactive: false });
+    expect(fn).toHaveBeenCalledOnce();
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0].status).toBe("passed");
+  });
+
+  it("fails when a function command throws", async () => {
+    const result = await runChecks(
+      config([
+        {
+          name: "A",
+          command: async () => {
+            throw new Error("boom");
+          },
+        },
+      ]),
+      { interactive: false },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.results[0].status).toBe("failed");
+  });
+
+  it("does not shell out for a function command", async () => {
+    await runChecks(config([{ name: "A", command: () => {} }]), { interactive: false });
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
   it("fails a non-optional check with no fixer", async () => {
     const result = await runChecks(config([{ name: "A", command: "fail" }]), { interactive: false });
     expect(result.exitCode).toBe(1);
