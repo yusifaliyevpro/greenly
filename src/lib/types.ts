@@ -15,13 +15,23 @@ export interface OnFailContext {
 export type OnFailFn = (ctx: OnFailContext) => void | Promise<void>;
 
 /**
+ * A function run in-process as a check, instead of a shell command. May be
+ * async. Throw (or reject) to mark the check as failed; return to pass.
+ */
+export type CommandFn = () => void | Promise<void>;
+
+/**
  * A single check to run, in order.
  */
 export interface GreenlyCheck {
   /** Label shown while running and in the final summary, e.g. "TypeScript". */
   name: string;
-  /** Shell command to run, e.g. `"pnpm tsc --noEmit"`. */
-  command: string;
+  /**
+   * The check to run: a shell command string (e.g. `"pnpm tsc --noEmit"`), or
+   * a function run in-process instead. A function may be async, and must throw
+   * (or reject) to fail the check.
+   */
+  command: string | CommandFn;
   /**
    * Command string, or a function, run to fix the check when it fails.
    * The user is asked Yes/No first (skipped with `--yes`/`--fix`, or when

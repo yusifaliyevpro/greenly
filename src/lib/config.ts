@@ -69,8 +69,12 @@ export async function loadGreenlyConfig(
     throw new ConfigInvalidError(configFile, `"checks" must be a non-empty array`);
   }
   for (const [i, check] of config.checks.entries()) {
-    if (!check || typeof check.name !== "string" || typeof check.command !== "string") {
-      throw new ConfigInvalidError(configFile, `checks[${i}] must have a string "name" and "command"`);
+    const validCommand = typeof check?.command === "string" || typeof check?.command === "function";
+    if (!check || typeof check.name !== "string" || !validCommand) {
+      throw new ConfigInvalidError(
+        configFile,
+        `checks[${i}] must have a string "name" and a string or function "command"`,
+      );
     }
   }
 
