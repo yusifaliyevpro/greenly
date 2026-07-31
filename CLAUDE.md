@@ -23,7 +23,7 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 - `src/index.ts` - library entry. Re-exports `defineConfig` and the public types.
 - `src/lib/types.ts` - `GreenlyConfig`, `GreenlyCheck`, `OnFailContext`, `OnFailFn` (JSDoc every field).
 - `src/lib/define-config.ts` - `defineConfig` (identity, for inference).
-- `src/lib/config.ts` - `loadGreenlyConfig` via `c12`; `findConfigFile`; `ConfigNotFoundError` / `ConfigInvalidError`.
+- `src/lib/config.ts` - `loadGreenlyConfig` via `jiti` (zero-dep runtime TS loader); `findConfigFile`; `ConfigNotFoundError` / `ConfigInvalidError`.
 - `src/lib/runner.ts` - `runChecks`: the sequential runner + banner + summary.
 - `src/lib/args.ts` - `parseArgs` / `resolveMode` (pure, unit-tested).
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).

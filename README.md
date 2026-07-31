@@ -1,5 +1,12 @@
 # greenly
 
+[![npm version](https://img.shields.io/npm/v/greenly?color=3fb950&label=npm)](https://www.npmjs.com/package/greenly)
+[![npm downloads](https://img.shields.io/npm/dm/greenly?color=3fb950)](https://www.npmjs.com/package/greenly)
+[![unpacked size](https://img.shields.io/npm/unpacked-size/greenly?color=3fb950)](https://www.npmjs.com/package/greenly)
+[![Socket Badge](https://badge.socket.dev/npm/package/greenly/1.0.1)](https://socket.dev/npm/package/greenly)
+[![PR Checks](https://github.com/yusifaliyevpro/greenly/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/yusifaliyevpro/greenly/actions/workflows/pr-checks.yml)
+[![license](https://img.shields.io/npm/l/greenly?color=3fb950)](https://github.com/yusifaliyevpro/greenly/blob/main/LICENSE)
+
 > Config-driven project check runner. Define your lint / format / typecheck / test steps once in `greenly.config.ts` and run them with a single command.
 
 Stop copy-pasting a `pr-checks` script into every repo. Describe your checks in a typed config, and `greenly` runs them in order, streams their output, and offers to auto-fix the ones that can be fixed.

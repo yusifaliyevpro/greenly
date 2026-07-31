@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadConfig } from "c12";
+import { pathToFileURL } from "node:url";
+import { createJiti } from "jiti";
 import { CONFIG_EXTENSIONS } from "./constants";
 import type { GreenlyConfig } from "./types";
 
@@ -58,7 +59,10 @@ export async function loadGreenlyConfig(
   const configFile = findConfigFile(cwd);
   if (!configFile) throw new ConfigNotFoundError(cwd);
 
-  const { config } = await loadConfig<GreenlyConfig>({ cwd, configFile });
+  // jiti runs .ts/.mts/.cts (and .js/.mjs/.cjs/.json) at runtime and resolves the
+  // config's own `import "greenly"` through the installed package.
+  const jiti = createJiti(pathToFileURL(resolve(cwd, "greenly.config")).href);
+  const config = await jiti.import<GreenlyConfig>(configFile, { default: true });
 
   if (!config || typeof config !== "object") {
     throw new ConfigInvalidError(configFile, "config must export an object");
