@@ -27,6 +27,9 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 - `src/lib/runner.ts` - `runChecks`: the sequential runner + banner + summary.
 - `src/lib/args.ts` - `parseArgs` / `resolveMode` (pure, unit-tested).
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).
+- `src/lib/init.ts` - `greenly init` scaffolder. Pure helpers (`detectPackageManager`,
+  `buildChecks`, `renderConfig`, `withCheckScript`, `CHECK_PRESETS`, `installCommand`) are
+  unit-tested; `runInit` is the clack-driven orchestrator. `cli.ts` routes `argv[0] === "init"` to it.
 
 ## Config
 
@@ -65,9 +68,10 @@ export default defineConfig({
 - `@clack/prompts` is used **only** for the interactive Yes/No fix `confirm` (default yes).
 - Non-interactive by default when `process.stdout.isTTY` is false (CI/agents never hang).
 
-## CLI flags
+## CLI
 
-`-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `-v`/`--version`, `-h`/`--help`.
+`greenly` runs the checks. `greenly init` scaffolds a config interactively.
+Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `-v`/`--version`, `-h`/`--help`.
 
 ## Commands
 

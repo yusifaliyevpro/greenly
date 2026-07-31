@@ -4,13 +4,24 @@
 
 Stop copy-pasting a `pr-checks` script into every repo. Describe your checks in a typed config, and `greenly` runs them in order, streams their output, and offers to auto-fix the ones that can be fixed.
 
+## Quick start
+
+The fastest way to get going is the interactive scaffolder. It asks for a project
+name, config format, script name, and which checks to include, then writes the config,
+adds a `"check": "greenly"` script, and installs greenly:
+
+```bash
+pnpx greenly init
+# or: npx greenly init
+```
+
 ## Install
+
+Or set it up manually:
 
 ```bash
 pnpm add -D greenly
 ```
-
-## Quick start
 
 Create a `greenly.config.ts` at your project root:
 
@@ -104,14 +115,16 @@ greenly.config.js   greenly.config.mjs   greenly.config.cjs
 greenly.config.json
 ```
 
-## CLI flags
+## CLI
 
-| Flag                   | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents). |
-| `--no-fix`             | Run all checks, never prompt or fix, just report.                        |
-| `-v`, `--version`      | Print the version.                                                       |
-| `-h`, `--help`         | Show help.                                                               |
+| Command / Flag         | Description                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `greenly`              | Run the checks from `greenly.config.*`.                                            |
+| `greenly init`         | Scaffold a config interactively (format, script name, checks) and install greenly. |
+| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents).           |
+| `--no-fix`             | Run all checks, never prompt or fix, just report.                                  |
+| `-v`, `--version`      | Print the version.                                                                 |
+| `-h`, `--help`         | Show help.                                                                         |
 
 When stdout is **not a TTY** (CI, piped output), greenly is non-interactive by default, so it never prompts and nothing hangs. Use `--yes` there to auto-apply fixes.
 
