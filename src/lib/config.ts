@@ -1,13 +1,11 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "c12";
+import { CONFIG_EXTENSIONS } from "./constants";
 import type { GreenlyConfig } from "./types";
 
 /** Base name of the config file, without extension. */
 export const CONFIG_BASENAME = "greenly.config";
-
-/** Supported config extensions, in resolution order. */
-export const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs", "json"] as const;
 
 /** Thrown when no `greenly.config.*` file can be found. */
 export class ConfigNotFoundError extends Error {

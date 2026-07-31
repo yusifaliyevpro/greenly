@@ -8,7 +8,9 @@ Stop copy-pasting a `pr-checks` script into every repo. Describe your checks in 
 
 The fastest way to get going is the interactive scaffolder. It asks for a project
 name, config format, script name, and which checks to include, then writes the config,
-adds a `"check": "greenly"` script, and installs greenly:
+adds a `"check": "greenly"` script, and installs greenly. It adapts to your project:
+it reuses matching `package.json` scripts (e.g. `fmt:check`, `lint`) when they exist,
+only offers the lint/format tools you already use, and detects Next.js:
 
 ```bash
 pnpx greenly init

@@ -4,11 +4,15 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadGreenlyConfig } from "../src/lib/config";
 import {
+  availablePresets,
   buildChecks,
   CHECK_PRESETS,
   configFileName,
   detectPackageManager,
+  installedDependencies,
   installCommand,
+  isNextProject,
+  packageScripts,
   renderConfig,
   withCheckScript,
 } from "../src/lib/init";
@@ -56,7 +60,6 @@ describe("buildChecks", () => {
     expect(buildChecks(["eslint"], "npm")[0]).toEqual({
       name: "ESLint",
       command: "npx eslint .",
-      onFail: "npx eslint . --fix",
     });
     expect(buildChecks(["typescript"], "bun")[0].command).toBe("bunx tsc --noEmit");
   });
@@ -69,6 +72,136 @@ describe("buildChecks", () => {
 
   it("ignores unknown ids", () => {
     expect(buildChecks(["nope"], "pnpm")).toEqual([]);
+  });
+
+  it("orders formatters before linters", () => {
+    expect(buildChecks(["oxlint", "oxfmt"], "pnpm").map((c) => c.name)).toEqual(["Oxfmt", "Oxlint"]);
+    expect(buildChecks(["eslint", "prettier", "typescript"], "pnpm").map((c) => c.name)).toEqual([
+      "TypeScript",
+      "Prettier",
+      "ESLint",
+    ]);
+  });
+
+  it("prefers matching package.json scripts over raw tool commands", () => {
+    const scripts = new Set(["fmt:check", "fmt", "lint", "lint:fix", "test", "build", "typecheck"]);
+    expect(buildChecks(["oxfmt"], "pnpm", { scripts })[0]).toEqual({
+      name: "Oxfmt",
+      command: "pnpm fmt:check",
+      onFail: "pnpm fmt",
+    });
+    expect(buildChecks(["oxlint"], "pnpm", { scripts })[0]).toEqual({
+      name: "Oxlint",
+      command: "pnpm lint",
+    });
+    expect(buildChecks(["vitest"], "pnpm", { scripts })[0].command).toBe("pnpm test");
+    expect(buildChecks(["typescript"], "pnpm", { scripts })[0].command).toBe("pnpm typecheck");
+  });
+
+  it("uses the run prefix for scripts and falls back per field", () => {
+    // Only the check script exists; the fix falls back to the raw tool command.
+    const scripts = new Set(["fmt:check"]);
+    expect(buildChecks(["oxfmt"], "npm", { scripts })[0]).toEqual({
+      name: "Oxfmt",
+      command: "npm run fmt:check",
+      onFail: "npx oxfmt",
+    });
+  });
+
+  it("adds --incremental false to tsc for Next.js projects", () => {
+    expect(buildChecks(["typescript"], "pnpm", { isNext: true })[0].command).toBe(
+      "pnpm tsc --noEmit --incremental false",
+    );
+    expect(buildChecks(["typescript"], "pnpm", { isNext: false })[0].command).toBe("pnpm tsc --noEmit");
+    expect(buildChecks(["typescript"], "pnpm")[0].command).toBe("pnpm tsc --noEmit");
+  });
+});
+
+describe("packageScripts", () => {
+  it("collects script names", () => {
+    const set = packageScripts({ scripts: { "fmt:check": "oxfmt --check", lint: "oxlint" } });
+    expect(set.has("fmt:check")).toBe(true);
+    expect(set.has("lint")).toBe(true);
+  });
+
+  it("handles missing scripts / package.json", () => {
+    expect(packageScripts({ name: "x" }).size).toBe(0);
+    expect(packageScripts(null).size).toBe(0);
+  });
+});
+
+describe("installedDependencies", () => {
+  it("collects names from dependencies and devDependencies", () => {
+    const set = installedDependencies({ dependencies: { next: "1" }, devDependencies: { oxlint: "1" } });
+    expect(set.has("next")).toBe(true);
+    expect(set.has("oxlint")).toBe(true);
+    expect(set.has("missing")).toBe(false);
+  });
+
+  it("handles a missing package.json", () => {
+    expect(installedDependencies(null).size).toBe(0);
+  });
+});
+
+function shownPresetIds(installed: string[]): string[] {
+  return availablePresets(new Set(installed)).map((p) => p.value);
+}
+
+describe("availablePresets", () => {
+  const ids = shownPresetIds;
+
+  it("shows both lint/format tools when none are installed", () => {
+    const shown = ids([]);
+    expect(shown).toContain("oxlint");
+    expect(shown).toContain("eslint");
+    expect(shown).toContain("oxfmt");
+    expect(shown).toContain("prettier");
+  });
+
+  it("hides the competitor when one tool is installed", () => {
+    const shown = ids(["oxlint", "oxfmt"]);
+    expect(shown).toContain("oxlint");
+    expect(shown).toContain("oxfmt");
+    expect(shown).not.toContain("eslint");
+    expect(shown).not.toContain("prettier");
+  });
+
+  it("prefers eslint/prettier when those are installed", () => {
+    const shown = ids(["eslint", "prettier"]);
+    expect(shown).toContain("eslint");
+    expect(shown).toContain("prettier");
+    expect(shown).not.toContain("oxlint");
+    expect(shown).not.toContain("oxfmt");
+  });
+
+  it("shows both when both of a pair are installed", () => {
+    const shown = ids(["oxlint", "eslint"]);
+    expect(shown).toContain("oxlint");
+    expect(shown).toContain("eslint");
+  });
+
+  it("always keeps non-competing presets", () => {
+    const shown = ids(["eslint"]);
+    expect(shown).toContain("typescript");
+    expect(shown).toContain("vitest");
+    expect(shown).toContain("build");
+  });
+});
+
+describe("isNextProject", () => {
+  it("is true when a next.config file exists", () => {
+    expect(isNextProject(null, true)).toBe(true);
+    expect(isNextProject({ name: "x" }, true)).toBe(true);
+  });
+
+  it("is true when next is a dependency or devDependency", () => {
+    expect(isNextProject({ dependencies: { next: "15.0.0" } }, false)).toBe(true);
+    expect(isNextProject({ devDependencies: { next: "15.0.0" } }, false)).toBe(true);
+  });
+
+  it("is false otherwise", () => {
+    expect(isNextProject({ dependencies: { react: "19.0.0" } }, false)).toBe(false);
+    expect(isNextProject(null, false)).toBe(false);
   });
 });
 
