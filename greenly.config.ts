@@ -5,8 +5,8 @@ export default defineConfig({
   name: "greenly",
   checks: [
     { name: "TypeScript", command: "pnpm tsc --noEmit" },
-    { name: "Format", command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" },
-    { name: "Lint", command: "pnpm oxlint" },
+    { name: "Oxfmt", command: "pnpm fmt:check", onFail: "pnpm fmt" },
+    { name: "Oxlint", command: "pnpm lint" },
     { name: "Tests", command: "pnpm test" },
     { name: "Build", command: "pnpm build" },
     { name: "Version", command: checkVersion },

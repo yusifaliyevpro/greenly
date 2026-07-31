@@ -3,12 +3,14 @@ import pkg from "../package.json" with { type: "json" };
 import { parseArgs, resolveMode } from "./lib/args";
 import { colors } from "./lib/colors";
 import { ConfigInvalidError, ConfigNotFoundError, loadGreenlyConfig } from "./lib/config";
+import { runInit } from "./lib/init";
 import { runChecks } from "./lib/runner";
 
 const HELP = `${colors.bold("greenly")} - config-driven project check runner
 
 ${colors.bold("Usage")}
   greenly [options]
+  greenly init        Scaffold a greenly.config file interactively
 
 ${colors.bold("Options")}
   -y, --yes, --fix   Auto-run every onFail fixer without prompting (CI / agents)
@@ -32,7 +34,14 @@ ${colors.bold("Config")}
 `;
 
 async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+
+  if (argv[0] === "init") {
+    await runInit();
+    return;
+  }
+
+  const parsed = parseArgs(argv);
 
   if (parsed.help) {
     console.log(HELP);

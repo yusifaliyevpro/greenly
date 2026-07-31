@@ -1,16 +1,36 @@
 # greenly
 
+[![npm version](https://img.shields.io/npm/v/greenly?color=3fb950&label=npm)](https://www.npmjs.com/package/greenly)
+[![npm downloads](https://img.shields.io/npm/dm/greenly?color=3fb950)](https://www.npmjs.com/package/greenly)
+[![unpacked size](https://img.shields.io/npm/unpacked-size/greenly?color=3fb950)](https://www.npmjs.com/package/greenly)
+[![Socket Badge](https://badge.socket.dev/npm/package/greenly/1.0.1)](https://socket.dev/npm/package/greenly)
+[![PR Checks](https://github.com/yusifaliyevpro/greenly/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/yusifaliyevpro/greenly/actions/workflows/pr-checks.yml)
+[![license](https://img.shields.io/npm/l/greenly?color=3fb950)](https://github.com/yusifaliyevpro/greenly/blob/main/LICENSE)
+
 > Config-driven project check runner. Define your lint / format / typecheck / test steps once in `greenly.config.ts` and run them with a single command.
 
 Stop copy-pasting a `pr-checks` script into every repo. Describe your checks in a typed config, and `greenly` runs them in order, streams their output, and offers to auto-fix the ones that can be fixed.
 
+## Quick start
+
+The fastest way to get going is the interactive scaffolder. It asks for a project
+name, config format, script name, and which checks to include, then writes the config,
+adds a `"check": "greenly"` script, and installs greenly. It adapts to your project:
+it reuses matching `package.json` scripts (e.g. `fmt:check`, `lint`) when they exist,
+only offers the lint/format tools you already use, and detects Next.js:
+
+```bash
+pnpx greenly init
+# or: npx greenly init
+```
+
 ## Install
+
+Or set it up manually:
 
 ```bash
 pnpm add -D greenly
 ```
-
-## Quick start
 
 Create a `greenly.config.ts` at your project root:
 
@@ -104,14 +124,16 @@ greenly.config.js   greenly.config.mjs   greenly.config.cjs
 greenly.config.json
 ```
 
-## CLI flags
+## CLI
 
-| Flag                   | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents). |
-| `--no-fix`             | Run all checks, never prompt or fix, just report.                        |
-| `-v`, `--version`      | Print the version.                                                       |
-| `-h`, `--help`         | Show help.                                                               |
+| Command / Flag         | Description                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `greenly`              | Run the checks from `greenly.config.*`.                                            |
+| `greenly init`         | Scaffold a config interactively (format, script name, checks) and install greenly. |
+| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents).           |
+| `--no-fix`             | Run all checks, never prompt or fix, just report.                                  |
+| `-v`, `--version`      | Print the version.                                                                 |
+| `-h`, `--help`         | Show help.                                                                         |
 
 When stdout is **not a TTY** (CI, piped output), greenly is non-interactive by default, so it never prompts and nothing hangs. Use `--yes` there to auto-apply fixes.
 
