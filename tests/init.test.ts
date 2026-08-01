@@ -366,7 +366,10 @@ describe("CHECK_PRESETS", () => {
 async function writeGreenlyShim(root: string): Promise<void> {
   const pkgDir = join(root, "node_modules", "greenly");
   await mkdir(pkgDir, { recursive: true });
-  await writeFile(join(pkgDir, "package.json"), JSON.stringify({ name: "greenly", version: "0.0.0", main: "index.js" }));
+  await writeFile(
+    join(pkgDir, "package.json"),
+    JSON.stringify({ name: "greenly", version: "0.0.0", main: "index.js" }),
+  );
   await writeFile(join(pkgDir, "index.js"), "exports.defineConfig = (c) => c;\n");
 }
 
