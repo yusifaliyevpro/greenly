@@ -15,6 +15,6 @@
 
 ## Checklist
 
-- [ ] `pnpm check` passes locally (typecheck, format, lint, tests, build)
+- [ ] Run `pnpm check`
 - [ ] Added or updated tests where relevant
 - [ ] Updated docs (README / CLAUDE.md) where relevant
