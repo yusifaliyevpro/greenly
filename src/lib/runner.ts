@@ -3,27 +3,27 @@ import { cancel, confirm, isCancel } from "@clack/prompts";
 import { colors } from "./colors";
 import type { GreenlyCheck, GreenlyConfig } from "./types";
 
-export interface RunOptions {
+export type RunOptions = {
   /** Auto-run every `onFail` fixer without prompting (e.g. `--yes`/`--fix`). */
   autoFix?: boolean;
   /** Whether interactive prompts are allowed. When `false`, never prompt or fix. */
   interactive?: boolean;
-}
+};
 
 export type CheckStatus = "passed" | "fixed" | "failed" | "warned";
 
-export interface CheckResult {
+export type CheckResult = {
   name: string;
   status: CheckStatus;
-}
+};
 
-export interface RunResult {
+export type RunResult = {
   results: CheckResult[];
   /** Number of non-optional checks that ended up failing. */
   failed: number;
   /** Exit code: 1 when any non-optional check failed, else 0. */
   exitCode: number;
-}
+};
 
 /** Minimum banner width, and the padding kept on each side of the centered name. */
 const MIN_WIDTH = 60;
@@ -42,11 +42,11 @@ function center(text: string, width: number): string {
   return " ".repeat(left) + text + " ".repeat(total - left);
 }
 
-interface CommandResult {
+type CommandResult = {
   ok: boolean;
   /** Captured stderr (pnpm's own `$ script` echo and error output live here). */
   stderr: string;
-}
+};
 
 /**
  * Run a check's command. A shell string streams stdout live with stderr

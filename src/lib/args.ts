@@ -1,18 +1,18 @@
-export interface ParsedArgs {
+export type ParsedArgs = {
   help: boolean;
   version: boolean;
   /** `-y` / `--yes` / `--fix` was passed (and not overridden by `--no-fix`). */
   autoFix: boolean;
   /** `--no-fix` was passed. */
   noFix: boolean;
-}
+};
 
-export interface RunMode {
+export type RunMode = {
   /** Auto-run every fixer without prompting. */
   autoFix: boolean;
   /** Whether interactive prompts are allowed. */
   interactive: boolean;
-}
+};
 
 /** Parse the raw CLI arguments into flags. `--no-fix` wins over `--yes`/`--fix`. */
 export function parseArgs(argv: string[]): ParsedArgs {

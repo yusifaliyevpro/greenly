@@ -1,12 +1,12 @@
 /**
  * Context passed to an `onFail` function when a check fails.
  */
-export interface OnFailContext {
+export type OnFailContext = {
   /** The check that failed. */
   check: GreenlyCheck;
   /** The error thrown while running the check's command. */
   error: unknown;
-}
+};
 
 /**
  * A function run to fix a failing check. Invoked after the user confirms
@@ -24,7 +24,7 @@ export type CommandFn = () => void | Promise<void>;
 /**
  * A single check to run, in order.
  */
-export interface GreenlyCheck {
+export type GreenlyCheck = {
   /** Label shown while running and in the final summary, e.g. "TypeScript". */
   name: string;
   /**
@@ -44,15 +44,15 @@ export interface GreenlyCheck {
    * (no non-zero exit code).
    */
   optional?: boolean;
-}
+};
 
 /**
  * Greenly configuration. Author it with {@link defineConfig} in a
  * `greenly.config.{ts,js,mts,mjs,cts,cjs,json}` file.
  */
-export interface GreenlyConfig {
+export type GreenlyConfig = {
   /** Project name shown in the banner. Defaults to the package name / cwd. */
   name?: string;
   /** Ordered list of checks to run. */
   checks: GreenlyCheck[];
-}
+};
