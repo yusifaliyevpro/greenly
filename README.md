@@ -1,5 +1,5 @@
 <h1>
-  <img src="https://raw.githubusercontent.com/yusifaliyevpro/greenly/main/assets/greenly.svg" alt="" height="34" align="top" />
+  <img src="https://raw.githubusercontent.com/yusifaliyevpro/greenly/main/assets/greenly.svg" alt="" height="34" align="center" />
   greenly
 </h1>
 
@@ -112,6 +112,15 @@ steps with one:
 +        run: pnpm check
 ```
 
+## Examples in the wild
+
+Real `greenly.config.ts` files that mix the usual checks with project-specific ones:
+
+- [**vscode-icons**](https://github.com/yusifaliyevpro/vscode-icons/blob/main/greenly.config.ts) - adds custom "Sorted Icons" (auto-fixed), "Icon Integrity", and "Version Check" steps, so the icon set and version bump are validated by the same command as everything else instead of a separate script nobody remembers to run.
+- [**countries**](https://github.com/yusifaliyevpro/countries/blob/main/greenly.config.ts) - alongside typecheck / format / lint / test / build, a custom "Sorted data" check keeps the country dataset in order and auto-sorts it on failure, so a misordered entry can never slip into a PR.
+- [**Azerbaijan GitHub Community / blog**](https://github.com/azerbaijan-git-community/blog/blob/main/greenly.config.ts) - a custom "Validate Posts" check runs on every contribution, so a malformed blog post is caught automatically instead of during review.
+- [**Azerbaijan GitHub Community / showcase**](https://github.com/azerbaijan-git-community/showcase/blob/main/greenly.config.ts) - a custom "Validate projects" check verifies each submitted showcase entry, so contributor PRs are checked the same way locally and in CI.
+
 ## Config reference
 
 | Field               | Type                                       | Description                                                               |
@@ -177,6 +186,12 @@ greenly.config.json
 | `-h`, `--help`         | Show help.                                                               |
 
 When stdout is **not a TTY** (CI, piped output), greenly is non-interactive by default, so it never prompts and nothing hangs. Use `--yes` there to auto-apply fixes.
+
+## Demo
+
+Here is `pnpm check` running greenly on a real project ([**vscode-icons**](https://github.com/yusifaliyevpro/vscode-icons/blob/main/greenly.config.ts)):
+
+![greenly running pnpm check](https://raw.githubusercontent.com/yusifaliyevpro/greenly/main/assets/greenly-run.gif)
 
 ## License
 
