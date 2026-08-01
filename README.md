@@ -193,6 +193,10 @@ Here is `pnpm check` running greenly on a real project ([**vscode-icons**](https
 
 ![greenly running pnpm check](https://raw.githubusercontent.com/yusifaliyevpro/greenly/main/assets/greenly-run.gif)
 
+## Contributing
+
+If you face any problem, please open a PR or issue according to [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-MIT © [Yusif Aliyev](https://yusifaliyevpro.com)
+LGPL-2.1-or-later © [Yusif Aliyev](https://yusifaliyevpro.com)
