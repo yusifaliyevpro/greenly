@@ -5,6 +5,9 @@ import { colors } from "./lib/colors";
 import { ConfigInvalidError, ConfigNotFoundError, loadGreenlyConfig } from "./lib/config";
 import { runInit } from "./lib/init";
 import { runChecks } from "./lib/runner";
+import { detectLockfiles, detectPackageManager, installCommand } from "./lib/utils";
+import { checkForUpdate } from "./lib/version";
+import type { UpdateInfo } from "./lib/version";
 
 const HELP = `${colors.bold("greenly")} - config-driven project check runner
 
@@ -33,6 +36,13 @@ ${colors.bold("Config")}
     });
 `;
 
+/** Print an "update available" notice with the command to update. */
+function printUpdateNotice(info: UpdateInfo): void {
+  const pm = detectPackageManager(process.env.npm_config_user_agent, detectLockfiles(process.cwd()));
+  console.log(colors.yellow(`Update available: greenly ${colors.dim(info.current)} -> ${colors.bold(info.latest)}`));
+  console.log(colors.dim(`Run ${colors.bold(installCommand(pm))} to update.`) + "\n");
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
@@ -52,7 +62,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const mode = resolveMode(parsed, process.stdout.isTTY ?? false);
+  const isTTY = process.stdout.isTTY ?? false;
+  const mode = resolveMode(parsed, isTTY);
+
+  // Aside: check npm for a newer greenly while the checks run. Non-blocking,
+  // never throws, skipped on non-TTY (CI/agents). Reported at the end.
+  const updateCheck = isTTY ? checkForUpdate(pkg.name, pkg.version) : null;
 
   try {
     const { config } = await loadGreenlyConfig();
@@ -60,6 +75,9 @@ async function main(): Promise<void> {
     // Set exitCode instead of process.exit() so pending async handles (e.g. an
     // undici socket left open by a fetch in a function check) close cleanly.
     process.exitCode = exitCode;
+
+    const update = updateCheck ? await updateCheck : null;
+    if (update) printUpdateNotice(update);
   } catch (error) {
     if (error instanceof ConfigNotFoundError || error instanceof ConfigInvalidError) {
       console.error(colors.red(error.message));

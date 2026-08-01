@@ -6,30 +6,31 @@ import { cancel, confirm, intro, isCancel, log, multiselect, outro, select, spin
 import { colors } from "./colors";
 import { CONFIG_EXTENSIONS } from "./constants";
 import type { ConfigExt } from "./constants";
+import { detectLockfiles, detectPackageManager, installCommand } from "./utils";
+import type { PackageManager } from "./utils";
+import { fetchLatestVersion, isNewer } from "./version";
 
 const execAsync = promisify(exec);
-
-export type PackageManager = "pnpm" | "npm" | "yarn" | "bun";
 
 /** Narrow an unknown value to a plain object without an assertion. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-interface PmContext {
+type PmContext = {
   /** Prefix to run a local binary (e.g. "pnpm", "npx", "bunx"). */
   exec: string;
   /** Prefix to run a package.json script (e.g. "pnpm", "npm run"). */
   run: string;
-}
+};
 
 /** Context passed to a preset when building its check command. */
-interface BuildContext extends PmContext {
-  /** Whether the project is Next.js (adds `--incremental false` to tsc). */
-  isNext: boolean;
+type BuildContext = PmContext & {
+  /** Installed dependency names, so a preset can tweak its command (e.g. tsc for Next.js). */
+  deps: ReadonlySet<string>;
   /** Script names present in package.json, preferred over raw tool commands. */
   scripts: ReadonlySet<string>;
-}
+};
 
 /** If package.json already defines a matching script, run that (via the run prefix). */
 function scriptCommand(ctx: BuildContext, candidates: readonly string[]): string | null {
@@ -37,75 +38,111 @@ function scriptCommand(ctx: BuildContext, candidates: readonly string[]): string
   return found ? `${ctx.run} ${found}` : null;
 }
 
-export interface GeneratedCheck {
+export type GeneratedCheck = {
   name: string;
   command: string;
   onFail?: string;
-}
+};
 
-/** A selectable check preset and how to build its command for a package manager. */
-export interface CheckPreset {
+/**
+ * A selectable check preset and how to build its command for a package manager.
+ *
+ * To add a new built-in check (e.g. expo-doctor, a custom doctor script), append
+ * an entry here. Set `detect` to the dependency (or dependencies) that gate it:
+ * the preset is only offered when `detect` returns true for the installed deps.
+ * Presets with no `detect` are always offered (e.g. Build, which is generic).
+ */
+export type CheckPreset = {
   value: string;
   label: string;
+  /**
+   * Whether to offer this preset, given the set of installed dependency names
+   * (dependencies + devDependencies). Omit to always offer it.
+   */
+  detect?: (deps: ReadonlySet<string>) => boolean;
   build: (ctx: BuildContext) => GeneratedCheck;
-}
+};
+
+/** A preset gated on a single dependency being present in package.json. */
+const dep = (name: string) => (deps: ReadonlySet<string>) => deps.has(name);
 
 export const CHECK_PRESETS: readonly CheckPreset[] = [
   {
     value: "typescript",
     label: "TypeScript (tsc)",
+    detect: dep("typescript"),
     // Next.js sets `incremental: true` in tsconfig, so `tsc --noEmit` needs `--incremental false`.
     build: (c) => ({
       name: "TypeScript",
       command:
         scriptCommand(c, ["typecheck", "type-check"]) ??
-        `${c.exec} tsc --noEmit${c.isNext ? " --incremental false" : ""}`,
+        `${c.run} tsc --noEmit${dep("next")(c.deps) ? " --incremental false" : ""}`,
     }),
   },
   // Formatters come before linters so a fix reformats before linting runs.
   {
     value: "oxfmt",
     label: "Oxfmt",
+    detect: dep("oxfmt"),
     build: (c) => ({
       name: "Oxfmt",
-      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.exec} oxfmt --check`,
-      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.exec} oxfmt`,
+      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.run} oxfmt --check`,
+      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.run} oxfmt`,
     }),
   },
   {
     value: "prettier",
     label: "Prettier",
+    detect: dep("prettier"),
     build: (c) => ({
       name: "Prettier",
-      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.exec} prettier --check .`,
-      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.exec} prettier --write .`,
+      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.run} prettier --check .`,
+      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.run} prettier --write .`,
     }),
   },
   {
     value: "oxlint",
     label: "Oxlint",
+    detect: dep("oxlint"),
     build: (c) => ({
       name: "Oxlint",
-      command: scriptCommand(c, ["lint"]) ?? `${c.exec} oxlint`,
+      command: scriptCommand(c, ["lint"]) ?? `${c.run} oxlint`,
     }),
   },
   {
     value: "eslint",
     label: "ESLint",
+    detect: dep("eslint"),
     build: (c) => ({
       name: "ESLint",
-      command: scriptCommand(c, ["lint"]) ?? `${c.exec} eslint .`,
+      command: scriptCommand(c, ["lint"]) ?? `${c.run} eslint .`,
     }),
   },
   {
     value: "vitest",
     label: "Tests (Vitest)",
-    build: (c) => ({ name: "Tests", command: scriptCommand(c, ["test"]) ?? `${c.exec} vitest run` }),
+    detect: dep("vitest"),
+    build: (c) => ({ name: "Tests", command: scriptCommand(c, ["test"]) ?? `${c.run} vitest run` }),
+  },
+  {
+    value: "expo-doctor",
+    label: "Expo Doctor",
+    detect: dep("expo"),
+    build: (c) => ({ name: "Expo Doctor", command: scriptCommand(c, ["doctor"]) ?? `${c.exec} expo-doctor` }),
   },
   {
     value: "build",
     label: "Build",
     build: (c) => ({ name: "Build", command: scriptCommand(c, ["build"]) ?? `${c.run} build` }),
+  },
+  {
+    value: "react-doctor",
+    label: "React Doctor",
+    detect: dep("react"),
+    build: (c) => ({
+      name: "React Doctor",
+      command: `${dep("react-doctor")(c.deps) ? c.run : c.exec} react-doctor --verbose`,
+    }),
   },
 ];
 
@@ -113,9 +150,9 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
 export function pmContext(pm: PackageManager): PmContext {
   switch (pm) {
     case "pnpm":
-      return { exec: "pnpm", run: "pnpm" };
+      return { exec: "pnpx", run: "pnpm" };
     case "yarn":
-      return { exec: "yarn", run: "yarn" };
+      return { exec: "yarn dlx", run: "yarn" };
     case "bun":
       return { exec: "bunx", run: "bun run" };
     default:
@@ -123,59 +160,18 @@ export function pmContext(pm: PackageManager): PmContext {
   }
 }
 
-/** The command that installs greenly for a package manager. */
-export function installCommand(pm: PackageManager): string {
-  switch (pm) {
-    case "pnpm":
-      return "pnpm add -D greenly@latest";
-    case "yarn":
-      return "yarn add -D greenly@latest";
-    case "bun":
-      return "bun add -d greenly@latest";
-    default:
-      return "npm install -D greenly@latest";
-  }
-}
-
-/**
- * Detect the package manager from the invoking agent (npm_config_user_agent),
- * falling back to lockfiles present in the project.
- */
-export function detectPackageManager(userAgent: string | undefined, lockfiles: readonly string[]): PackageManager {
-  const ua = userAgent ?? "";
-  if (ua.startsWith("pnpm")) return "pnpm";
-  if (ua.startsWith("yarn")) return "yarn";
-  if (ua.startsWith("bun")) return "bun";
-  if (ua.startsWith("npm")) return "npm";
-
-  if (lockfiles.includes("pnpm-lock.yaml")) return "pnpm";
-  if (lockfiles.includes("yarn.lock")) return "yarn";
-  if (lockfiles.includes("bun.lockb") || lockfiles.includes("bun.lock")) return "bun";
-  return "npm";
-}
-
 /** Build check objects for the selected preset ids, in catalog order. */
 export function buildChecks(
   selected: readonly string[],
   pm: PackageManager,
-  opts: { isNext?: boolean; scripts?: ReadonlySet<string> } = {},
+  opts: { deps?: ReadonlySet<string>; scripts?: ReadonlySet<string> } = {},
 ): GeneratedCheck[] {
   const ctx: BuildContext = {
     ...pmContext(pm),
-    isNext: opts.isNext ?? false,
+    deps: opts.deps ?? new Set(),
     scripts: opts.scripts ?? new Set(),
   };
   return CHECK_PRESETS.filter((p) => selected.includes(p.value)).map((p) => p.build(ctx));
-}
-
-/** Whether the project is a Next.js app (has a next.config file, or `next` as a dependency). */
-export function isNextProject(pkg: Record<string, unknown> | null, hasNextConfig: boolean): boolean {
-  if (hasNextConfig) return true;
-  const hasNextDep = (field: string) => {
-    const deps = pkg?.[field];
-    return isRecord(deps) && "next" in deps;
-  };
-  return hasNextDep("dependencies") || hasNextDep("devDependencies");
 }
 
 /** Script names declared in package.json. */
@@ -184,30 +180,72 @@ export function packageScripts(pkg: Record<string, unknown> | null): Set<string>
   return isRecord(scripts) ? new Set(Object.keys(scripts)) : new Set();
 }
 
+/** The dependency record for a package.json field, or null if absent / not an object. */
+function depRecord(pkg: Record<string, unknown> | null, field: string): Record<string, unknown> | null {
+  const deps = pkg?.[field];
+  return isRecord(deps) ? deps : null;
+}
+
 /** All dependency names declared in package.json (dependencies + devDependencies). */
 export function installedDependencies(pkg: Record<string, unknown> | null): Set<string> {
   const names = new Set<string>();
   for (const field of ["dependencies", "devDependencies"]) {
-    const deps = pkg?.[field];
-    if (isRecord(deps)) for (const key of Object.keys(deps)) names.add(key);
+    const deps = depRecord(pkg, field);
+    if (deps) for (const key of Object.keys(deps)) names.add(key);
   }
   return names;
 }
 
+/** Where greenly is declared in package.json: a devDependency, a (prod) dependency, or absent. */
+export type GreenlyLocation = "dev" | "prod" | "none";
+
+/** Which dependency list greenly is declared in (devDependencies wins if it is in both). */
+export function greenlyLocation(pkg: Record<string, unknown> | null): GreenlyLocation {
+  const inField = (field: string) => {
+    const deps = depRecord(pkg, field);
+    return deps !== null && "greenly" in deps;
+  };
+  if (inField("devDependencies")) return "dev";
+  if (inField("dependencies")) return "prod";
+  return "none";
+}
+
+/** The greenly version range declared in the root package.json (devDependencies preferred), or null. */
+export function declaredGreenlyVersion(pkg: Record<string, unknown> | null): string | null {
+  for (const field of ["devDependencies", "dependencies"]) {
+    const version = depRecord(pkg, field)?.greenly;
+    if (typeof version === "string") return version;
+  }
+  return null;
+}
+
 /**
- * Presets to offer given the installed dependencies. For a competing pair
- * (Oxlint/ESLint, Oxfmt/Prettier), when exactly one is installed only that one
- * is shown; when both or neither are present, both are shown.
+ * Whether `init` should offer to install greenly. It skips the install step
+ * only when greenly is already a devDependency at the latest version (per the
+ * version declared in the root package.json); a missing entry, a
+ * prod-`dependencies` placement, or an outdated/undeterminable version all fall
+ * through to offering it.
+ */
+export function shouldOfferInstall(opts: {
+  location: GreenlyLocation;
+  declaredVersion: string | null;
+  latestVersion: string | null;
+}): boolean {
+  const { location, declaredVersion, latestVersion } = opts;
+  if (location === "dev" && declaredVersion && latestVersion && !isNewer(latestVersion, declaredVersion)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Presets to offer given the installed dependencies. Each preset is gated
+ * independently on its own `detect` predicate (typically the presence of a
+ * single dependency in package.json). Presets without a `detect` are always
+ * offered (e.g. Build).
  */
 export function availablePresets(installed: ReadonlySet<string>): CheckPreset[] {
-  const hidden = new Set<string>();
-  const prefer = (a: string, b: string) => {
-    if (installed.has(a) && !installed.has(b)) hidden.add(b);
-    if (installed.has(b) && !installed.has(a)) hidden.add(a);
-  };
-  prefer("oxlint", "eslint");
-  prefer("oxfmt", "prettier");
-  return CHECK_PRESETS.filter((p) => !hidden.has(p.value));
+  return CHECK_PRESETS.filter((p) => !p.detect || p.detect(installed));
 }
 
 /** The config file name for an extension. */
@@ -269,16 +307,6 @@ function readPackageJson(path: string): Record<string, unknown> | null {
   return null;
 }
 
-function detectLockfiles(cwd: string): string[] {
-  return ["pnpm-lock.yaml", "yarn.lock", "package-lock.json", "bun.lockb", "bun.lock"].filter((f) =>
-    existsSync(join(cwd, f)),
-  );
-}
-
-function hasNextConfigFile(cwd: string): boolean {
-  return ["js", "mjs", "cjs", "ts", "mts", "cts"].some((e) => existsSync(join(cwd, `next.config.${e}`)));
-}
-
 /** Exit cleanly if the user cancelled a prompt. */
 function ensure<T>(value: T | symbol): T {
   if (isCancel(value)) {
@@ -296,6 +324,8 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   const pkg = readPackageJson(pkgPath);
   const defaultName = typeof pkg?.name === "string" ? pkg.name : basename(cwd);
   const pm = detectPackageManager(process.env.npm_config_user_agent, detectLockfiles(cwd));
+  // Kick off the npm latest-version lookup now so it overlaps with the prompts.
+  const latestPromise = fetchLatestVersion("greenly");
 
   const name = ensure(
     await text({
@@ -321,7 +351,8 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     }),
   );
 
-  const presets = availablePresets(installedDependencies(pkg));
+  const installed = installedDependencies(pkg);
+  const presets = availablePresets(installed);
   const selected = ensure(
     await multiselect({
       message: "Select the checks to include",
@@ -330,7 +361,17 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     }),
   );
 
-  const doInstall = ensure(await confirm({ message: `Install greenly now with ${pm}?`, initialValue: true }));
+  // Offer to install unless greenly is already a devDependency at the latest version.
+  const declaredVersion = declaredGreenlyVersion(pkg);
+  const latestVersion = await latestPromise;
+  const alreadyLatest = !shouldOfferInstall({
+    location: greenlyLocation(pkg),
+    declaredVersion,
+    latestVersion,
+  });
+  const doInstall = alreadyLatest
+    ? false
+    : ensure(await confirm({ message: `Install greenly now with ${pm}?`, initialValue: true }));
 
   // Write the config file.
   const fileName = configFileName(ext);
@@ -344,11 +385,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
       process.exit(0);
     }
   }
-  const isNext = isNextProject(pkg, hasNextConfigFile(cwd));
-  if (isNext && selected.includes("typescript")) {
-    log.info(colors.dim("Detected Next.js, using tsc --incremental false"));
-  }
-  const checks = buildChecks(selected, pm, { isNext, scripts: packageScripts(pkg) });
+  const checks = buildChecks(selected, pm, { deps: installed, scripts: packageScripts(pkg) });
   const content = renderConfig({ name, checks, ext, isModule: pkg?.type === "module" });
   writeFileSync(filePath, content);
   log.success(`Created ${colors.bold(fileName)}`);
@@ -385,6 +422,8 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
       s.stop("Could not install greenly automatically");
       log.warn(`Run "${installCommand(pm)}" yourself.`);
     }
+  } else if (alreadyLatest) {
+    log.info(`greenly ${colors.bold(declaredVersion ?? "")} already a devDependency at latest, skipped install.`);
   } else {
     log.info(`Skipped install. Run "${installCommand(pm)}" when ready.`);
   }

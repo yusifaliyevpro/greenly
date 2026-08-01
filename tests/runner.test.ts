@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ execSync: vi.fn<() => void>() }));
 vi.mock("@clack/prompts", () => ({
-  intro: vi.fn(),
-  outro: vi.fn(),
-  cancel: vi.fn(),
-  confirm: vi.fn(),
+  intro: vi.fn<() => void>(),
+  outro: vi.fn<() => void>(),
+  cancel: vi.fn<() => void>(),
+  confirm: vi.fn<() => void>(),
   isCancel: (v: unknown) => typeof v === "symbol",
   log: {
-    step: vi.fn(),
-    success: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
+    step: vi.fn<() => void>(),
+    success: vi.fn<() => void>(),
+    error: vi.fn<() => void>(),
+    warn: vi.fn<() => void>(),
+    info: vi.fn<() => void>(),
   },
 }));
 
@@ -48,7 +48,7 @@ describe("runChecks", () => {
   });
 
   it("passes when a function command resolves", async () => {
-    const fn = vi.fn(async () => {});
+    const fn = vi.fn<() => Promise<void>>(async () => {});
     const result = await runChecks(config([{ name: "A", command: fn }]), { interactive: false });
     expect(fn).toHaveBeenCalledOnce();
     expect(result.exitCode).toBe(0);
@@ -111,13 +111,31 @@ describe("runChecks", () => {
   });
 
   it("invokes an onFail function", async () => {
-    const fix = vi.fn(async () => {});
+    const fix = vi.fn<() => Promise<void>>(async () => {});
     const result = await runChecks(config([{ name: "A", command: "fail", onFail: fix }]), {
       autoFix: true,
       interactive: false,
     });
     expect(fix).toHaveBeenCalledOnce();
     expect(result.results[0].status).toBe("fixed");
+  });
+
+  it("forwards the actual thrown error to an onFail function", async () => {
+    const boom = new Error("boom");
+    const fix = vi.fn<(ctx: { error: unknown }) => void>();
+    await runChecks(
+      config([
+        {
+          name: "A",
+          command: () => {
+            throw boom;
+          },
+          onFail: fix,
+        },
+      ]),
+      { autoFix: true, interactive: false },
+    );
+    expect(fix).toHaveBeenCalledWith(expect.objectContaining({ error: boom }));
   });
 
   it("prompts in interactive mode and fixes on yes", async () => {

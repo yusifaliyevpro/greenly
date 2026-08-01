@@ -19,7 +19,8 @@ The package exposes **both**:
 
 Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `src/lib/`.
 
-- `src/cli.ts` - bin entry (shebang). Parses flags, loads config, runs checks, sets exit code.
+- `src/cli.ts` - bin entry (shebang). Parses flags, loads config, runs checks, sets exit code. Also
+  kicks off a non-blocking npm update check (TTY only) and prints an "update available" notice at the end.
 - `src/index.ts` - library entry. Re-exports `defineConfig` and the public types.
 - `src/lib/types.ts` - `GreenlyConfig`, `GreenlyCheck`, `OnFailContext`, `OnFailFn` (JSDoc every field).
 - `src/lib/define-config.ts` - `defineConfig` (identity, for inference).
@@ -27,9 +28,21 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 - `src/lib/runner.ts` - `runChecks`: the sequential runner + banner + summary.
 - `src/lib/args.ts` - `parseArgs` / `resolveMode` (pure, unit-tested).
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).
-- `src/lib/init.ts` - `greenly init` scaffolder. Pure helpers (`detectPackageManager`,
-  `buildChecks`, `renderConfig`, `withCheckScript`, `CHECK_PRESETS`, `installCommand`) are
-  unit-tested; `runInit` is the clack-driven orchestrator. `cli.ts` routes `argv[0] === "init"` to it.
+- `src/lib/utils.ts` - package-manager helpers shared by `cli.ts` and `init.ts`: `PackageManager`,
+  `detectPackageManager`, `detectLockfiles`, `installCommand` (the "install latest" / update command).
+- `src/lib/version.ts` - version helpers: `compareVersions` / `isNewer` (pure), `fetchLatestVersion`
+  and `checkForUpdate` (best-effort npm lookup that never throws, times out, and returns `null` on any
+  failure so the CLI stays silent offline).
+- `src/lib/init.ts` - `greenly init` scaffolder. Pure helpers (`buildChecks`, `renderConfig`,
+  `withCheckScript`, `CHECK_PRESETS`, `greenlyLocation`, `declaredGreenlyVersion`, `shouldOfferInstall`)
+  are unit-tested; `runInit` is the clack-driven orchestrator. `cli.ts` routes `argv[0] === "init"` to it.
+  Each entry in `CHECK_PRESETS` is offered independently: a `detect(deps)` predicate gates it on the
+  installed dependencies (usually a single dep via the `dep()` helper), so competing tools are never
+  paired, only whichever is actually in package.json is shown. Presets without `detect` are always
+  offered (e.g. Build). Add a new built-in check (expo-doctor, a custom doctor script) by appending an
+  entry with its own `detect` and `build`. The install step is skipped when greenly is already a
+  devDependency at the latest version (compared against the range declared in the root package.json,
+  never node_modules); a prod-`dependencies` placement or an outdated/undeterminable version re-prompts.
 
 ## Config
 
