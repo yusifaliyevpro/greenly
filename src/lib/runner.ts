@@ -46,6 +46,8 @@ type CommandResult = {
   ok: boolean;
   /** Captured stderr (pnpm's own `$ script` echo and error output live here). */
   stderr: string;
+  /** The value thrown by the command, forwarded to an `onFail` fixer. Unset on success. */
+  error?: unknown;
 };
 
 /**
@@ -59,7 +61,7 @@ async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResu
       await command();
       return { ok: true, stderr: "" };
     } catch (error) {
-      return { ok: false, stderr: colors.red(formatThrown(error)) };
+      return { ok: false, stderr: colors.red(formatThrown(error)), error };
     }
   }
 
@@ -73,7 +75,7 @@ async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResu
       if (typeof raw === "string") stderr = raw;
       else if (Buffer.isBuffer(raw)) stderr = raw.toString("utf8");
     }
-    return { ok: false, stderr };
+    return { ok: false, stderr, error };
   }
 }
 
@@ -129,6 +131,11 @@ function fixLabel(check: GreenlyCheck): string {
   return typeof check.onFail === "string" ? `"${check.onFail}"` : "the fix function";
 }
 
+/** The fixer's command text, for the "$ ..." line shown before it runs. */
+function fixCommand(check: GreenlyCheck): string {
+  return typeof check.onFail === "string" ? check.onFail : "fix function";
+}
+
 /**
  * Run all checks sequentially: stdout streams live, failures print their
  * buffered stderr, and fixable checks prompt (via clack) before running.
@@ -152,7 +159,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
     console.log(colors.bold(colors.yellow(`▶ ${check.name}`)));
     console.log(`  ${colors.cyan(commandLine(check.command))}\n`);
 
-    const { ok, stderr } = await runCommand(check.command);
+    const { ok, stderr, error } = await runCommand(check.command);
 
     if (ok) {
       console.log(`\n${colors.green(`✔ PASSED: ${check.name}`)}\n`);
@@ -200,9 +207,8 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       continue;
     }
 
-    const fixDisplay = typeof check.onFail === "string" ? check.onFail : "fix function";
-    console.log(`\n  ${colors.cyan(`$ ${fixDisplay}`)}\n`);
-    if (await runFix(check, new Error(`${check.name} failed`))) {
+    console.log(`\n  ${colors.cyan(`$ ${fixCommand(check)}`)}\n`);
+    if (await runFix(check, error)) {
       console.log(`\n${colors.green(`✔ Auto-fixed: ${check.name}`)}\n`);
       results.push({ name: check.name, status: "fixed" });
     } else {

@@ -139,7 +139,10 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     value: "react-doctor",
     label: "React Doctor",
     detect: dep("react"),
-    build: (c) => ({ name: "React Doctor", command: `${c.exec} react-doctor --verbose` }),
+    build: (c) => ({
+      name: "React Doctor",
+      command: `${dep("react-doctor")(c.deps) ? c.run : c.exec} react-doctor --verbose`,
+    }),
   },
 ];
 
@@ -177,12 +180,18 @@ export function packageScripts(pkg: Record<string, unknown> | null): Set<string>
   return isRecord(scripts) ? new Set(Object.keys(scripts)) : new Set();
 }
 
+/** The dependency record for a package.json field, or null if absent / not an object. */
+function depRecord(pkg: Record<string, unknown> | null, field: string): Record<string, unknown> | null {
+  const deps = pkg?.[field];
+  return isRecord(deps) ? deps : null;
+}
+
 /** All dependency names declared in package.json (dependencies + devDependencies). */
 export function installedDependencies(pkg: Record<string, unknown> | null): Set<string> {
   const names = new Set<string>();
   for (const field of ["dependencies", "devDependencies"]) {
-    const deps = pkg?.[field];
-    if (isRecord(deps)) for (const key of Object.keys(deps)) names.add(key);
+    const deps = depRecord(pkg, field);
+    if (deps) for (const key of Object.keys(deps)) names.add(key);
   }
   return names;
 }
@@ -193,8 +202,8 @@ export type GreenlyLocation = "dev" | "prod" | "none";
 /** Which dependency list greenly is declared in (devDependencies wins if it is in both). */
 export function greenlyLocation(pkg: Record<string, unknown> | null): GreenlyLocation {
   const inField = (field: string) => {
-    const deps = pkg?.[field];
-    return isRecord(deps) && "greenly" in deps;
+    const deps = depRecord(pkg, field);
+    return deps !== null && "greenly" in deps;
   };
   if (inField("devDependencies")) return "dev";
   if (inField("dependencies")) return "prod";
@@ -204,8 +213,8 @@ export function greenlyLocation(pkg: Record<string, unknown> | null): GreenlyLoc
 /** The greenly version range declared in the root package.json (devDependencies preferred), or null. */
 export function declaredGreenlyVersion(pkg: Record<string, unknown> | null): string | null {
   for (const field of ["devDependencies", "dependencies"]) {
-    const deps = pkg?.[field];
-    if (isRecord(deps) && typeof deps.greenly === "string") return deps.greenly;
+    const version = depRecord(pkg, field)?.greenly;
+    if (typeof version === "string") return version;
   }
   return null;
 }

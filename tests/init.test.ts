@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +12,7 @@ import {
   greenlyLocation,
   installedDependencies,
   packageScripts,
+  pmContext,
   renderConfig,
   shouldOfferInstall,
   withCheckScript,
@@ -69,6 +70,21 @@ describe("buildChecks", () => {
     expect(buildChecks(["react-doctor"], "pnpm")[0].command).toBe("pnpx react-doctor --verbose");
   });
 
+  it("runs react-doctor with the run prefix when it is installed, else the exec prefix", () => {
+    // Not installed -> exec prefix (npx / pnpx).
+    expect(buildChecks(["react-doctor"], "npm")[0].command).toBe("npx react-doctor --verbose");
+    expect(buildChecks(["react-doctor"], "pnpm", { deps: new Set(["react"]) })[0].command).toBe(
+      "pnpx react-doctor --verbose",
+    );
+    // Installed as a dependency -> run prefix (npm run / pnpm).
+    expect(buildChecks(["react-doctor"], "npm", { deps: new Set(["react-doctor"]) })[0].command).toBe(
+      "npm run react-doctor --verbose",
+    );
+    expect(buildChecks(["react-doctor"], "pnpm", { deps: new Set(["react-doctor"]) })[0].command).toBe(
+      "pnpm react-doctor --verbose",
+    );
+  });
+
   it("uses the run prefix for the build script", () => {
     expect(buildChecks(["build"], "pnpm")[0].command).toBe("pnpm build");
     expect(buildChecks(["build"], "npm")[0].command).toBe("npm run build");
@@ -119,6 +135,15 @@ describe("buildChecks", () => {
     );
     expect(buildChecks(["typescript"], "pnpm", { deps: new Set(["react"]) })[0].command).toBe("pnpm tsc --noEmit");
     expect(buildChecks(["typescript"], "pnpm")[0].command).toBe("pnpm tsc --noEmit");
+  });
+});
+
+describe("pmContext", () => {
+  it("maps each package manager to its exec/run prefixes", () => {
+    expect(pmContext("pnpm")).toEqual({ exec: "pnpx", run: "pnpm" });
+    expect(pmContext("yarn")).toEqual({ exec: "yarn dlx", run: "yarn" });
+    expect(pmContext("bun")).toEqual({ exec: "bunx", run: "bun run" });
+    expect(pmContext("npm")).toEqual({ exec: "npx", run: "npm run" });
   });
 });
 
@@ -289,6 +314,22 @@ describe("renderConfig", () => {
     expect(renderConfig({ name: "X", checks: sampleChecks, ext: "js", isModule: false })).toContain("module.exports");
   });
 
+  it("always emits ESM for .mts and .mjs, ignoring package.json type", () => {
+    for (const ext of ["mts", "mjs"] as const) {
+      expect(renderConfig({ name: "X", checks: sampleChecks, ext, isModule: false })).toContain(
+        "export default defineConfig(",
+      );
+    }
+  });
+
+  it("always emits CommonJS for .cts and .cjs, ignoring package.json type", () => {
+    for (const ext of ["cts", "cjs"] as const) {
+      expect(renderConfig({ name: "X", checks: sampleChecks, ext, isModule: true })).toContain(
+        `const { defineConfig } = require("greenly");`,
+      );
+    }
+  });
+
   it("renders JSON", () => {
     const out = renderConfig({ name: "MyApp", checks: sampleChecks, ext: "json", isModule: false });
     const parsed = JSON.parse(out);
@@ -319,6 +360,16 @@ describe("CHECK_PRESETS", () => {
   });
 });
 
+// The generated .ts/.js/.cjs/.mjs configs `import { defineConfig } from "greenly"`,
+// so the loader needs to resolve "greenly" from the temp dir. Drop a minimal
+// (identity) shim into its node_modules for the round-trip to succeed.
+async function writeGreenlyShim(root: string): Promise<void> {
+  const pkgDir = join(root, "node_modules", "greenly");
+  await mkdir(pkgDir, { recursive: true });
+  await writeFile(join(pkgDir, "package.json"), JSON.stringify({ name: "greenly", version: "0.0.0", main: "index.js" }));
+  await writeFile(join(pkgDir, "index.js"), "exports.defineConfig = (c) => c;\n");
+}
+
 describe("generated config is loadable by greenly", () => {
   let dir: string;
   beforeEach(async () => {
@@ -337,5 +388,27 @@ describe("generated config is loadable by greenly", () => {
     expect(config.name).toBe("Roundtrip");
     expect(config.checks.map((c) => c.name)).toEqual(["TypeScript", "Oxfmt"]);
     expect(config.checks[1]).toMatchObject({ command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" });
+  });
+
+  it("writes a CommonJS config the loader accepts", async () => {
+    await writeGreenlyShim(dir);
+    const checks = buildChecks(["typescript"], "pnpm");
+    const content = renderConfig({ name: "CjsRoundtrip", checks, ext: "cjs", isModule: false });
+    await writeFile(join(dir, "greenly.config.cjs"), content);
+
+    const { config } = await loadGreenlyConfig(dir);
+    expect(config.name).toBe("CjsRoundtrip");
+    expect(config.checks[0]).toMatchObject({ name: "TypeScript", command: "pnpm tsc --noEmit" });
+  });
+
+  it("writes an ESM config the loader accepts", async () => {
+    await writeGreenlyShim(dir);
+    const checks = buildChecks(["oxfmt"], "pnpm");
+    const content = renderConfig({ name: "EsmRoundtrip", checks, ext: "mjs", isModule: false });
+    await writeFile(join(dir, "greenly.config.mjs"), content);
+
+    const { config } = await loadGreenlyConfig(dir);
+    expect(config.name).toBe("EsmRoundtrip");
+    expect(config.checks[0]).toMatchObject({ command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" });
   });
 });

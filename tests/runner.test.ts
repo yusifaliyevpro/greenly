@@ -120,6 +120,24 @@ describe("runChecks", () => {
     expect(result.results[0].status).toBe("fixed");
   });
 
+  it("forwards the actual thrown error to an onFail function", async () => {
+    const boom = new Error("boom");
+    const fix = vi.fn<(ctx: { error: unknown }) => void>();
+    await runChecks(
+      config([
+        {
+          name: "A",
+          command: () => {
+            throw boom;
+          },
+          onFail: fix,
+        },
+      ]),
+      { autoFix: true, interactive: false },
+    );
+    expect(fix).toHaveBeenCalledWith(expect.objectContaining({ error: boom }));
+  });
+
   it("prompts in interactive mode and fixes on yes", async () => {
     mockConfirm.mockResolvedValue(true);
     const result = await runChecks(config([{ name: "A", command: "fail", onFail: "fixup" }]), {
