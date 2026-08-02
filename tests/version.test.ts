@@ -62,6 +62,27 @@ describe("fetchLatestVersion", () => {
     expect(await fetchLatestVersion("greenly")).toBeNull();
   });
 
+  it("times out on its own and returns null when the request hangs (internal timeout, no param)", async () => {
+    // The timeout is local to fetchLatestVersion (no timeoutMs argument). A
+    // request that never settles must be aborted internally and resolve null,
+    // so the CLI stays silent instead of hanging on a dead network.
+    vi.useFakeTimers();
+    try {
+      globalThis.fetch = vi.fn<typeof fetch>((_input, init) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        });
+      });
+      const pending = fetchLatestVersion("greenly");
+      await vi.advanceTimersByTimeAsync(3000);
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not request abbreviated metadata on /latest (registry answers 406)", async () => {
     // The real registry returns 406 Not Acceptable when the abbreviated
     // metadata accept header (application/vnd.npm.install-v1+json) is sent to
