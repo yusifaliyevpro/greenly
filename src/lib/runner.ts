@@ -10,9 +10,9 @@ export type RunOptions = {
   interactive?: boolean;
 };
 
-export type CheckStatus = "passed" | "fixed" | "failed" | "warned";
+type CheckStatus = "passed" | "fixed" | "failed" | "warned";
 
-export type CheckResult = {
+type CheckResult = {
   name: string;
   status: CheckStatus;
 };

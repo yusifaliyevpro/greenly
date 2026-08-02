@@ -6,7 +6,7 @@ import { CONFIG_EXTENSIONS } from "./constants";
 import type { GreenlyConfig } from "./types";
 
 /** Base name of the config file, without extension. */
-export const CONFIG_BASENAME = "greenly.config";
+const CONFIG_BASENAME = "greenly.config";
 
 /** Thrown when no `greenly.config.*` file can be found. */
 export class ConfigNotFoundError extends Error {
