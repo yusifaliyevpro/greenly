@@ -57,8 +57,10 @@ export async function fetchLatestVersion(pkg: string, timeoutMs = 3000): Promise
     try {
       const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
         signal: controller.signal,
-        // Abbreviated metadata: smaller payload than the full packument.
-        headers: { accept: "application/vnd.npm.install-v1+json" },
+        // NOTE: the abbreviated-metadata accept header
+        // (application/vnd.npm.install-v1+json) is only valid on the full
+        // packument route — sending it to /{pkg}/latest makes the registry
+        // answer 406, so this request must use the default accept.
       });
       if (!res.ok) return null;
       const data: unknown = await res.json();
