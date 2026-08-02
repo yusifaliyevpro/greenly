@@ -49,31 +49,47 @@ export type UpdateInfo = {
 /**
  * Fetch the `latest` dist-tag version of a package from the npm registry.
  * Resolves to the version string, or `null` on any failure. Never throws.
+ *
+ * The 3s timeout is internal and *starvation-aware*. This lookup is kicked off
+ * before the checks run, and each check blocks the single JS thread with
+ * `execSync`, so a plain `setTimeout(abort, 3000)` spends its whole budget while
+ * the fetch is frozen and aborts it the instant the loop frees. Instead we tick:
+ * a tick that arrives far later than its interval means the loop was blocked (so
+ * the fetch was frozen too) and is not charged to the budget — the request only
+ * spends its 3s across time it could actually make progress.
  */
-export async function fetchLatestVersion(pkg: string, timeoutMs = 3000): Promise<string | null> {
+export async function fetchLatestVersion(pkg: string): Promise<string | null> {
+  const controller = new AbortController();
+  const TICK_MS = 200;
+  let remaining = 3000;
+  let previous = Date.now();
+  const timer = setInterval(() => {
+    const now = Date.now();
+    const elapsed = now - previous;
+    previous = now;
+    // A tick much longer than its interval means the loop was blocked; skip it.
+    if (elapsed < TICK_MS * 3) remaining -= elapsed;
+    if (remaining <= 0) controller.abort();
+  }, TICK_MS);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
-        signal: controller.signal,
-        // NOTE: the abbreviated-metadata accept header
-        // (application/vnd.npm.install-v1+json) is only valid on the full
-        // packument route — sending it to /{pkg}/latest makes the registry
-        // answer 406, so this request must use the default accept.
-      });
-      if (!res.ok) return null;
-      const data: unknown = await res.json();
-      if (data && typeof data === "object" && "version" in data) {
-        const version = (data as { version?: unknown }).version;
-        return typeof version === "string" ? version : null;
-      }
-      return null;
-    } finally {
-      clearTimeout(timer);
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, {
+      signal: controller.signal,
+      // NOTE: the abbreviated-metadata accept header
+      // (application/vnd.npm.install-v1+json) is only valid on the full
+      // packument route — sending it to /{pkg}/latest makes the registry
+      // answer 406, so this request must use the default accept.
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    if (data && typeof data === "object" && "version" in data) {
+      const version = (data as { version?: unknown }).version;
+      return typeof version === "string" ? version : null;
     }
+    return null;
   } catch {
     return null; // offline, npm down, aborted, bad JSON: stay silent.
+  } finally {
+    clearInterval(timer);
   }
 }
 

@@ -40,7 +40,7 @@ ${colors.bold("Config")}
 function printUpdateNotice(info: UpdateInfo): void {
   const pm = detectPackageManager(process.env.npm_config_user_agent, detectLockfiles(process.cwd()));
   console.log(colors.yellow(`Update available: greenly ${colors.dim(info.current)} -> ${colors.bold(info.latest)}`));
-  console.log(colors.dim(`Run ${colors.bold(installCommand(pm))} to update.`) + "\n");
+  console.log(colors.bold(installCommand(pm)) + "\n");
 }
 
 async function main(): Promise<void> {
@@ -66,7 +66,11 @@ async function main(): Promise<void> {
   const mode = resolveMode(parsed, isTTY);
 
   // Aside: check npm for a newer greenly while the checks run. Non-blocking,
-  // never throws, skipped on non-TTY (CI/agents). Reported at the end.
+  // never throws, skipped on non-TTY (CI/agents). Reported at the end. Starting
+  // it here (rather than after the checks) overlaps the network round-trip with
+  // the checks so the result is ready by the time they finish — the notice adds
+  // no delay before exit. fetchLatestVersion's timeout is starvation-aware, so
+  // the config load / checks blocking the loop don't abort this healthy fetch.
   const updateCheck = isTTY ? checkForUpdate(pkg.name, pkg.version) : null;
 
   try {
