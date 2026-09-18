@@ -7,6 +7,3 @@ trustPolicyExcludePrune: true
 allowBuilds:
   esbuild: true
   unrs-resolver: true
-minimumReleaseAgeExclude:
-  - "@clack/core@1.5.0"
-  - "@clack/prompts@1.8.0"

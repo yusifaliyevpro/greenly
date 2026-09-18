@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { cancel, confirm, intro, isCancel, log, multiselect, outro, select, spinner, text } from "@clack/prompts";
+import type { CANCEL_SYMBOL } from "@clack/prompts";
 import { colors } from "./colors";
 import { CONFIG_EXTENSIONS } from "./constants";
 import type { ConfigExt } from "./constants";
@@ -308,7 +309,7 @@ function readPackageJson(path: string): Record<string, unknown> | null {
 }
 
 /** Exit cleanly if the user cancelled a prompt. */
-function ensure<T>(value: T | symbol): T {
+function ensure<T>(value: T | typeof CANCEL_SYMBOL): T {
   if (isCancel(value)) {
     cancel("init cancelled.");
     process.exit(0);
