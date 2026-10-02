@@ -19,10 +19,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 type PmContext = {
-  /** Prefix to run a local binary (e.g. "pnpm", "npx", "bunx"). */
+  /** Prefix to run a tool that may not be installed, downloading it if needed (e.g. "pnpx", "npx", "bunx"). */
   exec: string;
   /** Prefix to run a package.json script (e.g. "pnpm", "npm run"). */
   run: string;
+  /** Prefix to run an installed binary. Not `run` for npm: `npm run <tool>` only finds scripts. */
+  bin: string;
 };
 
 /** Context passed to a preset when building its check command. */
@@ -77,7 +79,7 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
       name: "TypeScript",
       command:
         scriptCommand(c, ["typecheck", "type-check"]) ??
-        `${c.run} tsc --noEmit${dep("next")(c.deps) ? " --incremental false" : ""}`,
+        `${c.bin} tsc --noEmit${dep("next")(c.deps) ? " --incremental false" : ""}`,
     }),
   },
   // Formatters come before linters so a fix reformats before linting runs.
@@ -87,8 +89,8 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     detect: dep("oxfmt"),
     build: (c) => ({
       name: "Oxfmt",
-      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.run} oxfmt --check`,
-      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.run} oxfmt`,
+      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.bin} oxfmt --check`,
+      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.bin} oxfmt`,
     }),
   },
   {
@@ -97,8 +99,8 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     detect: dep("prettier"),
     build: (c) => ({
       name: "Prettier",
-      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.run} prettier --check .`,
-      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.run} prettier --write .`,
+      command: scriptCommand(c, ["fmt:check", "format:check"]) ?? `${c.bin} prettier --check .`,
+      onFail: scriptCommand(c, ["fmt", "format"]) ?? `${c.bin} prettier --write .`,
     }),
   },
   {
@@ -107,7 +109,7 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     detect: dep("oxlint"),
     build: (c) => ({
       name: "Oxlint",
-      command: scriptCommand(c, ["lint"]) ?? `${c.run} oxlint`,
+      command: scriptCommand(c, ["lint"]) ?? `${c.bin} oxlint`,
     }),
   },
   {
@@ -116,14 +118,14 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     detect: dep("eslint"),
     build: (c) => ({
       name: "ESLint",
-      command: scriptCommand(c, ["lint"]) ?? `${c.run} eslint .`,
+      command: scriptCommand(c, ["lint"]) ?? `${c.bin} eslint .`,
     }),
   },
   {
     value: "vitest",
     label: "Tests (Vitest)",
     detect: dep("vitest"),
-    build: (c) => ({ name: "Tests", command: scriptCommand(c, ["test"]) ?? `${c.run} vitest run` }),
+    build: (c) => ({ name: "Tests", command: scriptCommand(c, ["test"]) ?? `${c.bin} vitest run` }),
   },
   {
     value: "expo-doctor",
@@ -142,22 +144,22 @@ export const CHECK_PRESETS: readonly CheckPreset[] = [
     detect: dep("react"),
     build: (c) => ({
       name: "React Doctor",
-      command: `${dep("react-doctor")(c.deps) ? c.run : c.exec} react-doctor --verbose`,
+      command: `${dep("react-doctor")(c.deps) ? c.bin : c.exec} react-doctor --verbose`,
     }),
   },
 ];
 
-/** Map a package manager to its exec/run prefixes. */
+/** Map a package manager to its exec/run/bin prefixes. */
 export function pmContext(pm: PackageManager): PmContext {
   switch (pm) {
     case "pnpm":
-      return { exec: "pnpx", run: "pnpm" };
+      return { exec: "pnpx", run: "pnpm", bin: "pnpm" };
     case "yarn":
-      return { exec: "yarn dlx", run: "yarn" };
+      return { exec: "yarn dlx", run: "yarn", bin: "yarn" };
     case "bun":
-      return { exec: "bunx", run: "bun run" };
+      return { exec: "bunx", run: "bun run", bin: "bun run" };
     default:
-      return { exec: "npx", run: "npm run" };
+      return { exec: "npx", run: "npm run", bin: "npx" };
   }
 }
 
@@ -308,11 +310,11 @@ function readPackageJson(path: string): Record<string, unknown> | null {
   return null;
 }
 
-/** Exit cleanly if the user cancelled a prompt. */
+/** Exit with code 1 if the user cancelled a prompt, so scripts can tell it from success. */
 function ensure<T>(value: T | typeof CANCEL_SYMBOL): T {
   if (isCancel(value)) {
     cancel("init cancelled.");
-    process.exit(0);
+    process.exit(1);
   }
   return value;
 }
@@ -383,7 +385,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     );
     if (!overwrite) {
       cancel("Kept the existing config. Nothing changed.");
-      process.exit(0);
+      process.exit(1);
     }
   }
   const checks = buildChecks(selected, pm, { deps: installed, scripts: packageScripts(pkg) });

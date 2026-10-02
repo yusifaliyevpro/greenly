@@ -27,6 +27,13 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 - `src/lib/config.ts` - `loadGreenlyConfig` via `jiti` (zero-dep runtime TS loader); `findConfigFile`; `ConfigNotFoundError` / `ConfigInvalidError`.
 - `src/lib/runner.ts` - `runChecks`: the sequential runner + banner + summary.
 - `src/lib/args.ts` - `parseArgs` / `resolveMode` (pure, unit-tested).
+- `src/lib/warnings.ts` - `hasWarnings`: detects warning markers in a passing command's output (pure, unit-tested).
+- `src/lib/select.ts` - `checkSlug` / `selectChecks`: CLI check names (`greenly oxlint tests`) are the lowercase
+  `name` with whitespace as dashes.
+- `src/lib/agent.ts` - `isAgentEnv` (same env-var list oxlint uses), `invocation` (how greenly was started, e.g.
+  `pnpm check` / `npm run check --`), `agentHints` (the usage box printed after a run in AI agent terminals only).
+  Box text states facts, no directives.
+- `src/lib/tail.ts` - `TailBuffer`: captured stdout/stderr keep only the last 1 MiB.
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).
 - `src/lib/utils.ts` - package-manager helpers shared by `cli.ts` and `init.ts`: `PackageManager`,
   `detectPackageManager`, `detectLockfiles`, `installCommand` (the "install latest" / update command).
@@ -46,13 +53,13 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 
 ## Config
 
-`greenly.config.{ts,js,mts,mjs,cts,cjs,json}`, discovered in the cwd. Authored with `defineConfig`:
+`greenly.config.{ts,js,mts,mjs,cts,cjs,json}`, discovered in the cwd or the nearest parent folder (stops at a `.git` folder); the CLI then `chdir`s to the config folder so commands, fixers and function checks run from there. Authored with `defineConfig`:
 
 ```ts
 import { defineConfig } from "greenly";
 
 export default defineConfig({
-  name: "MyProject", // shown centered in the banner; rules widen for long names
+  name: "MyProject", // banner title (defaults to package.json name, then the dir name); rules widen for long names
   checks: [
     { name: "TypeScript", command: "pnpm tsc --noEmit" },
     { name: "Format", command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" },
@@ -69,13 +76,22 @@ export default defineConfig({
 - The repo dogfoods itself via its own `greenly.config.ts`; that `import "greenly"` resolves through
   the package's own `exports` (Node self-referencing) after a build.
 - `greenly.config.ts` stays minimal (only the `defineConfig` export). Custom function checks live in
-  `scripts/` (e.g. `scripts/checks.ts` exports `checkVersion`) and are imported into the config.
+  `scripts/` (e.g. `scripts/version.ts` exports `checkVersion`) and are imported into the config.
 
 ## Runner behavior (important details)
 
-- Commands run with `stdio: ["inherit", "inherit", "pipe"]` - stdout streams live, **stderr is
-  buffered and only printed on failure**. This is deliberate: it hides the package manager's own
-  `$ <script>` echo (e.g. `$ vitest run`) which goes to stderr. Do not switch to full `"inherit"`.
+- Commands run via `spawn` with `stdio: ["inherit", "pipe", "pipe"]` - stdout is teed live and
+  captured, **stderr is buffered and only printed on failure**. This
+  is deliberate: it hides the package manager's own `$ <script>` echo (e.g. `$ vitest run`) which goes
+  to stderr. Do not switch to full `"inherit"`. `FORCE_COLOR=1` is set for the child when greenly's
+  own colors are on, since piping would otherwise drop them.
+- One `warned` status (with a `reason`) covers "not clean, but not blocking": `optional` (an optional
+  check failed) and `warnings` (exit 0, but **stdout** matched `hasWarnings`; never stderr, which carries
+  Node / package-manager warnings). Shown as `WARNINGS` / `FAILED` per check, `N warned` + `Warned checks:`
+  in the summary, never "All checks passed!". Exit 0 unless `--strict`. Opt out of detection per check
+  with `ignoreWarnings: true`. Oxlint's compact output under AI agents comes from agent env vars
+  (`CLAUDECODE`, `AI_AGENT`), not from the pipe.
+- Captured stdout/stderr are `TailBuffer`s (last 1 MiB), so huge output can't grow memory.
 - Output style mirrors the original `pr-checks.ts` (bold cyan banner, `> name`, `$ cmd`,
   `PASSED` / `FAILED`, separators, `Results:` summary), rendered with plain `console.log`.
 - `@clack/prompts` is used **only** for the interactive Yes/No fix `confirm` (default yes).
@@ -84,7 +100,12 @@ export default defineConfig({
 ## CLI
 
 `greenly` runs the checks. `greenly init` scaffolds a config interactively.
-Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `-v`/`--version`, `-h`/`--help`.
+Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `--strict` (warned checks
+exit 1), `-v`/`--version`, `-h`/`--help`. Positionals select checks by slug (`greenly oxlint tests`).
+Unknown flags or check names are an error (exit 1), so typos never silently run the checks. Because
+`init` is a subcommand, a check named "init" can't be selected by name; the CLI prints a rename notice for it (`reservedChecks`).
+In AI agent terminals (`isAgentEnv`) a usage box follows the summary; never in normal terminals or plain CI.
+Its last line names `--no-hints`, which hides it, so an agent sees it once per session.
 
 ## Commands
 

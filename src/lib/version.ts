@@ -51,9 +51,10 @@ export type UpdateInfo = {
  * Resolves to the version string, or `null` on any failure. Never throws.
  *
  * The 3s timeout is internal and *starvation-aware*. This lookup is kicked off
- * before the checks run, and each check blocks the single JS thread with
- * `execSync`, so a plain `setTimeout(abort, 3000)` spends its whole budget while
- * the fetch is frozen and aborts it the instant the loop frees. Instead we tick:
+ * before the checks run, and the config load, `onFail` fixers (`execSync`) and
+ * sync function checks can block the single JS thread, so a plain
+ * `setTimeout(abort, 3000)` may spend its whole budget while the fetch is frozen
+ * and abort it the instant the loop frees. Instead we tick:
  * a tick that arrives far later than its interval means the loop was blocked (so
  * the fetch was frozen too) and is not charged to the budget — the request only
  * spends its 3s across time it could actually make progress.

@@ -58,27 +58,39 @@ describe("buildChecks", () => {
     expect(checks[1]).toEqual({ name: "Oxfmt", command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" });
   });
 
-  it("runs local tools with the run prefix, external doctors with the exec prefix", () => {
-    // Local tools are run through the package manager (no npx/bunx).
+  it("runs local tools with the bin prefix, external doctors with the exec prefix", () => {
+    // `npm run <tool>` only runs package.json scripts, so npm needs npx for installed binaries.
     expect(buildChecks(["eslint"], "npm")[0]).toEqual({
       name: "ESLint",
-      command: "npm run eslint .",
+      command: "npx eslint .",
     });
+    expect(buildChecks(["typescript"], "npm")[0].command).toBe("npx tsc --noEmit");
+    expect(buildChecks(["oxfmt"], "npm")[0]).toEqual({
+      name: "Oxfmt",
+      command: "npx oxfmt --check",
+      onFail: "npx oxfmt",
+    });
+    expect(buildChecks(["prettier", "oxlint", "vitest"], "npm").map((c) => c.command)).toEqual([
+      "npx prettier --check .",
+      "npx oxlint",
+      "npx vitest run",
+    ]);
     expect(buildChecks(["typescript"], "bun")[0].command).toBe("bun run tsc --noEmit");
+    expect(buildChecks(["typescript"], "yarn")[0].command).toBe("yarn tsc --noEmit");
     // External doctor tools (not installed locally) still use the exec prefix.
     expect(buildChecks(["expo-doctor"], "npm")[0].command).toBe("npx expo-doctor");
     expect(buildChecks(["react-doctor"], "pnpm")[0].command).toBe("pnpx react-doctor --verbose");
   });
 
-  it("runs react-doctor with the run prefix when it is installed, else the exec prefix", () => {
+  it("runs react-doctor with the bin prefix when it is installed, else the exec prefix", () => {
     // Not installed -> exec prefix (npx / pnpx).
     expect(buildChecks(["react-doctor"], "npm")[0].command).toBe("npx react-doctor --verbose");
     expect(buildChecks(["react-doctor"], "pnpm", { deps: new Set(["react"]) })[0].command).toBe(
       "pnpx react-doctor --verbose",
     );
-    // Installed as a dependency -> run prefix (npm run / pnpm).
+    // Installed as a dependency -> bin prefix (npx / pnpm).
     expect(buildChecks(["react-doctor"], "npm", { deps: new Set(["react-doctor"]) })[0].command).toBe(
-      "npm run react-doctor --verbose",
+      "npx react-doctor --verbose",
     );
     expect(buildChecks(["react-doctor"], "pnpm", { deps: new Set(["react-doctor"]) })[0].command).toBe(
       "pnpm react-doctor --verbose",
@@ -125,7 +137,7 @@ describe("buildChecks", () => {
     expect(buildChecks(["oxfmt"], "npm", { scripts })[0]).toEqual({
       name: "Oxfmt",
       command: "npm run fmt:check",
-      onFail: "npm run oxfmt",
+      onFail: "npx oxfmt",
     });
   });
 
@@ -139,11 +151,11 @@ describe("buildChecks", () => {
 });
 
 describe("pmContext", () => {
-  it("maps each package manager to its exec/run prefixes", () => {
-    expect(pmContext("pnpm")).toEqual({ exec: "pnpx", run: "pnpm" });
-    expect(pmContext("yarn")).toEqual({ exec: "yarn dlx", run: "yarn" });
-    expect(pmContext("bun")).toEqual({ exec: "bunx", run: "bun run" });
-    expect(pmContext("npm")).toEqual({ exec: "npx", run: "npm run" });
+  it("maps each package manager to its exec/run/bin prefixes", () => {
+    expect(pmContext("pnpm")).toEqual({ exec: "pnpx", run: "pnpm", bin: "pnpm" });
+    expect(pmContext("yarn")).toEqual({ exec: "yarn dlx", run: "yarn", bin: "yarn" });
+    expect(pmContext("bun")).toEqual({ exec: "bunx", run: "bun run", bin: "bun run" });
+    expect(pmContext("npm")).toEqual({ exec: "npx", run: "npm run", bin: "npx" });
   });
 });
 

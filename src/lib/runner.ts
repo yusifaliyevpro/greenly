@@ -1,27 +1,38 @@
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { cancel, confirm, isCancel } from "@clack/prompts";
-import { colors } from "./colors";
+import { colors, colorsEnabled } from "./colors";
+import { TailBuffer } from "./tail";
 import type { GreenlyCheck, GreenlyConfig } from "./types";
+import { hasWarnings } from "./warnings";
 
 export type RunOptions = {
   /** Auto-run every `onFail` fixer without prompting (e.g. `--yes`/`--fix`). */
   autoFix?: boolean;
   /** Whether interactive prompts are allowed. When `false`, never prompt or fix. */
   interactive?: boolean;
+  /** Warned checks fail the run (exit 1), e.g. `--strict`. */
+  strict?: boolean;
 };
 
+/** `warned`: not clean, but not blocking (see `WarnReason`). Fails the run only with `strict`. */
 type CheckStatus = "passed" | "fixed" | "failed" | "warned";
+
+/** `warnings`: the command passed but printed warnings. `optional`: an optional check failed. */
+type WarnReason = "warnings" | "optional";
 
 type CheckResult = {
   name: string;
   status: CheckStatus;
+  reason?: WarnReason;
 };
 
 export type RunResult = {
   results: CheckResult[];
   /** Number of non-optional checks that ended up failing. */
   failed: number;
-  /** Exit code: 1 when any non-optional check failed, else 0. */
+  /** Number of warned checks (warnings, or a failed optional check). */
+  warned: number;
+  /** Exit code: 1 when any non-optional check failed (or, with `strict`, any check warned), else 0. */
   exitCode: number;
 };
 
@@ -44,6 +55,8 @@ function center(text: string, width: number): string {
 
 type CommandResult = {
   ok: boolean;
+  /** Captured stdout (also streamed live), scanned for warnings. */
+  stdout: string;
   /** Captured stderr (pnpm's own `$ script` echo and error output live here). */
   stderr: string;
   /** The value thrown by the command, forwarded to an `onFail` fixer. Unset on success. */
@@ -51,32 +64,52 @@ type CommandResult = {
 };
 
 /**
- * Run a check's command. A shell string streams stdout live with stderr
- * buffered (so the package manager's own `$ <script>` echo stays hidden unless
- * the check fails); a function runs in-process and fails only if it throws.
+ * Run a check's command. A shell string streams stdout live (also capturing it
+ * for warning detection) with stderr buffered, so the package manager's own
+ * `$ <script>` echo stays hidden. A function runs in-process and fails only if it throws.
  */
 async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResult> {
   if (typeof command === "function") {
     try {
       await command();
-      return { ok: true, stderr: "" };
+      return { ok: true, stdout: "", stderr: "" };
     } catch (error) {
-      return { ok: false, stderr: colors.red(formatThrown(error)), error };
+      return { ok: false, stdout: "", stderr: colors.red(formatThrown(error)), error };
     }
   }
 
-  try {
-    execSync(command, { stdio: ["inherit", "inherit", "pipe"], encoding: "utf8" });
-    return { ok: true, stderr: "" };
-  } catch (error) {
-    let stderr = "";
-    if (error && typeof error === "object" && "stderr" in error) {
-      const raw = (error as { stderr?: unknown }).stderr;
-      if (typeof raw === "string") stderr = raw;
-      else if (Buffer.isBuffer(raw)) stderr = raw.toString("utf8");
-    }
-    return { ok: false, stderr, error };
-  }
+  return new Promise((resolve) => {
+    // Piping stdout would drop the child's colors, so keep them when we're on a TTY.
+    const env = { ...process.env };
+    if (colorsEnabled && env.FORCE_COLOR === undefined) env.FORCE_COLOR = "1";
+
+    const child = spawn(command, { shell: true, stdio: ["inherit", "pipe", "pipe"], env });
+    const stdout = new TailBuffer();
+    const stderr = new TailBuffer();
+    child.stdout?.on("data", (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      stdout.push(chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
+
+    child.on("error", (error) => resolve({ ok: false, stdout: "", stderr: error.message, error }));
+    child.on("close", (code, signal) => {
+      const out = stdout.toString();
+      const err = (stderr.truncated ? "[earlier stderr truncated]\n" : "") + stderr.toString();
+      if (code === 0) {
+        resolve({ ok: true, stdout: out, stderr: err });
+        return;
+      }
+      const reason = signal ? `signal ${signal}` : `exit code ${code}`;
+      const error = Object.assign(new Error(`Command failed with ${reason}: ${command}`), {
+        status: code,
+        signal,
+        stdout: out,
+        stderr: err,
+      });
+      resolve({ ok: false, stdout: out, stderr: err, error });
+    });
+  });
 }
 
 /** Readable string for an unknown value, JSON-encoding plain objects. */
@@ -126,6 +159,15 @@ async function runFix(check: GreenlyCheck, error: unknown): Promise<boolean> {
   }
 }
 
+const REASON_LABEL: Record<WarnReason, string> = { warnings: "warnings", optional: "optional, failed" };
+
+/** Result for a check that ended up failing: warned when optional, else failed. */
+function softFail(check: GreenlyCheck): CheckResult {
+  return check.optional
+    ? { name: check.name, status: "warned", reason: "optional" }
+    : { name: check.name, status: "failed" };
+}
+
 /** Label describing the fixer, for prompts and logs. */
 function fixLabel(check: GreenlyCheck): string {
   return typeof check.onFail === "string" ? `"${check.onFail}"` : "the fix function";
@@ -141,7 +183,7 @@ function fixCommand(check: GreenlyCheck): string {
  * buffered stderr, and fixable checks prompt (via clack) before running.
  */
 export async function runChecks(config: GreenlyConfig, options: RunOptions = {}): Promise<RunResult> {
-  const { autoFix = false, interactive = true } = options;
+  const { autoFix = false, interactive = true, strict = false } = options;
 
   const name = config.name ?? "greenly";
   const width = bannerWidth(name);
@@ -159,7 +201,16 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
     console.log(colors.bold(colors.yellow(`▶ ${check.name}`)));
     console.log(`  ${colors.cyan(commandLine(check.command))}\n`);
 
-    const { ok, stderr, error } = await runCommand(check.command);
+    const { ok, stdout, stderr, error } = await runCommand(check.command);
+
+    // Only stdout: linters report there, while stderr carries Node / package-manager warnings.
+    if (ok && !check.ignoreWarnings && hasWarnings(stdout)) {
+      console.log(`\n${colors.yellow(`⚠ WARNINGS: ${check.name}`)}`);
+      console.log(colors.yellow(`  Exited successfully but reported warnings.`));
+      results.push({ name: check.name, status: "warned", reason: "warnings" });
+      console.log("\n" + colors.dim(rule("─")) + "\n");
+      continue;
+    }
 
     if (ok) {
       console.log(`\n${colors.green(`✔ PASSED: ${check.name}`)}\n`);
@@ -176,7 +227,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       if (check.optional) {
         console.log(colors.yellow(`  ${check.name} is optional, continuing.`));
       }
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
       console.log("\n" + colors.dim(rule("─")) + "\n");
       continue;
     }
@@ -191,7 +242,8 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       if (isCancel(answer)) {
         cancel("Aborted.");
         const failedSoFar = results.filter((r) => r.status === "failed").length;
-        return { results, failed: failedSoFar, exitCode: 1 };
+        const warnedSoFar = results.filter((r) => r.status === "warned").length;
+        return { results, failed: failedSoFar, warned: warnedSoFar, exitCode: 1 };
       }
       shouldFix = answer;
     }
@@ -202,7 +254,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       } else {
         console.log(colors.yellow(`  Skipped fix.`));
       }
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
       console.log("\n" + colors.dim(rule("─")) + "\n");
       continue;
     }
@@ -213,13 +265,14 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       results.push({ name: check.name, status: "fixed" });
     } else {
       console.log(`\n${colors.red(`  Auto-fix failed for ${check.name}, please fix manually.`)}\n`);
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
     }
     console.log(colors.dim(rule("─")) + "\n");
   }
 
   const passed = results.filter((r) => r.status === "passed" || r.status === "fixed").length;
-  const warned = results.filter((r) => r.status === "warned").length;
+  const warnedResults = results.filter((r) => r.status === "warned");
+  const warned = warnedResults.length;
   const failedResults = results.filter((r) => r.status === "failed");
   const failed = failedResults.length;
 
@@ -231,13 +284,25 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
     (failed > 0 ? colors.red(`${failed} failed`) : colors.dim("0 failed"));
   console.log(colors.bold(`   Results: ${summary}`));
 
+  if (warned > 0) {
+    console.log(`\n${colors.yellow(colors.bold("Warned checks:"))}`);
+    for (const r of warnedResults) {
+      console.log(colors.yellow(`  • ${r.name} (${REASON_LABEL[r.reason ?? "optional"]})`));
+    }
+  }
+
   if (failed > 0) {
     console.log(`\n${colors.red(colors.bold("Failed checks:"))}`);
     for (const r of failedResults) console.log(colors.red(`  • ${r.name}`));
     console.log(`\n${colors.red(colors.bold("⚠  Fix the issues above before continuing."))}\n`);
+  } else if (warned > 0 && strict) {
+    console.log(`\n${colors.red(colors.bold("✖  Strict mode: warned checks fail the run."))}\n`);
+  } else if (warned > 0) {
+    console.log(`\n${colors.yellow(colors.bold("⚠  No failures, but some checks warned."))}\n`);
   } else {
     console.log(`\n${colors.green(colors.bold("✔  All checks passed!"))}\n`);
   }
 
-  return { results, failed, exitCode: failed > 0 ? 1 : 0 };
+  const exitCode = failed > 0 || (strict && warned > 0) ? 1 : 0;
+  return { results, failed, warned, exitCode };
 }

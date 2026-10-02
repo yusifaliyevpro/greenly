@@ -78,8 +78,12 @@ Or wire it into your scripts so `pnpm check` works too:
 
 - Checks run **in order**. Each `command` runs in your shell with its output streamed live, so failures show up immediately.
 - If a check fails and declares an `onFail`, greenly asks **Yes/No** whether to run the fixer, then continues.
-- Checks marked `optional: true` warn on failure but never fail the overall run.
-- greenly exits with code `1` if any non-optional check is still failing, otherwise `0`.
+- A check is **warned** (not clean, but not blocking) when:
+  - it is marked `optional: true` and fails, or
+  - its command exits `0` but prints warnings (e.g. oxlint's `Found 2 warnings and 0 errors.`, ESLint's `(0 errors, 2 warnings)`), so nobody (human or AI agent) mistakes it for a clean run. Set `ignoreWarnings: true` on a check to opt out.
+- greenly exits with code `1` if any non-optional check is still failing (with `--strict`, also if any check warned), otherwise `0`.
+- In a monorepo, greenly uses the nearest `greenly.config.*` in the current folder or a parent (up to the repository root) and runs the commands from that config's folder.
+- In AI agent terminals (Claude Code, Cursor, Codex, Gemini CLI, Copilot CLI, ...), a short usage box listing `--strict`, `--yes` and the check names is printed after the run. Its last line names `--no-hints`, which hides it on later runs to save the agent's context. Normal terminals and plain CI don't show it.
 
 ## Use it in CI
 
@@ -123,14 +127,15 @@ Real `greenly.config.ts` files that mix the usual checks with project-specific o
 
 ## Config reference
 
-| Field               | Type                                       | Description                                                               |
-| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `name`              | `string?`                                  | Project name shown in the banner.                                         |
-| `checks`            | `Check[]`                                  | Ordered list of checks.                                                   |
-| `checks[].name`     | `string`                                   | Label shown while running and in the summary.                             |
-| `checks[].command`  | `string \| () => void \| Promise<void>`    | Shell command (e.g. `"pnpm tsc --noEmit"`), or a function run in-process. |
-| `checks[].onFail`   | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.                   |
-| `checks[].optional` | `boolean?`                                 | When `true`, a failure warns instead of failing the run.                  |
+| Field                     | Type                                       | Description                                                               |
+| ------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `name`                    | `string?`                                  | Project name shown in the banner.                                         |
+| `checks`                  | `Check[]`                                  | Ordered list of checks.                                                   |
+| `checks[].name`           | `string`                                   | Label shown while running and in the summary.                             |
+| `checks[].command`        | `string \| () => void \| Promise<void>`    | Shell command (e.g. `"pnpm tsc --noEmit"`), or a function run in-process. |
+| `checks[].onFail`         | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.                   |
+| `checks[].optional`       | `boolean?`                                 | When `true`, a failure warns instead of failing the run.                  |
+| `checks[].ignoreWarnings` | `boolean?`                                 | When `true`, warnings in a passing command's output are not reported.     |
 
 `command` can be a function instead of a shell string. It may be async, and it must **throw** (or reject) to mark the check as failed. When it throws, greenly prints only the error's `message` (and its `cause` if present) - not a stack trace - so make the message descriptive:
 
@@ -166,7 +171,7 @@ export default defineConfig({
 
 ### Config file formats
 
-Any of these are auto-discovered (first match wins, in this order):
+Any of these are auto-discovered in the current folder, then each parent folder up to the repository root (nearest folder wins, then this order):
 
 ```
 greenly.config.ts   greenly.config.mts   greenly.config.cts
@@ -176,14 +181,17 @@ greenly.config.json
 
 ## CLI
 
-| Command / Flag         | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `greenly`              | Run the checks from `greenly.config.*`.                                  |
-| `greenly init`         | Set up a config by answering a few questions, then install greenly.      |
-| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents). |
-| `--no-fix`             | Run all checks, never prompt or fix, just report.                        |
-| `-v`, `--version`      | Print the version.                                                       |
-| `-h`, `--help`         | Show help.                                                               |
+| Command / Flag         | Description                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `greenly`              | Run the checks from `greenly.config.*`.                                                                                                                |
+| `greenly init`         | Set up a config by answering a few questions, then install greenly.                                                                                    |
+| `greenly <check>...`   | Run only the named checks, e.g. `greenly oxlint tests`. A check's name is its lowercase `name` with spaces as dashes (`Expo Doctor` -> `expo-doctor`). |
+| `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents).                                                                               |
+| `--no-fix`             | Run all checks, never prompt or fix, just report.                                                                                                      |
+| `--strict`             | Warned checks (warnings, failed optional checks) also exit `1`.                                                                                        |
+| `--no-hints`           | Don't print the usage box shown in AI agent terminals.                                                                                                 |
+| `-v`, `--version`      | Print the version.                                                                                                                                     |
+| `-h`, `--help`         | Show help.                                                                                                                                             |
 
 When stdout is **not a TTY** (CI, piped output), greenly is non-interactive by default, so it never prompts and nothing hangs. Use `--yes` there to auto-apply fixes.
 
