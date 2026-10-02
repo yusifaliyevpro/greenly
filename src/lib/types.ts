@@ -44,6 +44,11 @@ export type GreenlyCheck = {
    * (no non-zero exit code).
    */
   optional?: boolean;
+  /**
+   * When `true`, a passing command is never reported as having warnings, even
+   * if its output contains warning markers (e.g. `Found 2 warnings`).
+   */
+  ignoreWarnings?: boolean;
 };
 
 /**

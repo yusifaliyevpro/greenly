@@ -27,6 +27,7 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 - `src/lib/config.ts` - `loadGreenlyConfig` via `jiti` (zero-dep runtime TS loader); `findConfigFile`; `ConfigNotFoundError` / `ConfigInvalidError`.
 - `src/lib/runner.ts` - `runChecks`: the sequential runner + banner + summary.
 - `src/lib/args.ts` - `parseArgs` / `resolveMode` (pure, unit-tested).
+- `src/lib/warnings.ts` - `hasWarnings`: detects warning markers in a passing command's output (pure, unit-tested).
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).
 - `src/lib/utils.ts` - package-manager helpers shared by `cli.ts` and `init.ts`: `PackageManager`,
   `detectPackageManager`, `detectLockfiles`, `installCommand` (the "install latest" / update command).
@@ -73,9 +74,15 @@ export default defineConfig({
 
 ## Runner behavior (important details)
 
-- Commands run with `stdio: ["inherit", "inherit", "pipe"]` - stdout streams live, **stderr is
-  buffered and only printed on failure**. This is deliberate: it hides the package manager's own
-  `$ <script>` echo (e.g. `$ vitest run`) which goes to stderr. Do not switch to full `"inherit"`.
+- Commands run via `spawn` with `stdio: ["inherit", "pipe", "pipe"]` - stdout is teed live and
+  captured, **stderr is buffered and only printed on failure**. This
+  is deliberate: it hides the package manager's own `$ <script>` echo (e.g. `$ vitest run`) which goes
+  to stderr. Do not switch to full `"inherit"`. `FORCE_COLOR=1` is set for the child when greenly's
+  own colors are on, since piping would otherwise drop them.
+- A command that exits 0 but whose **stdout** (never stderr, which carries Node / package-manager warnings) matches `hasWarnings` (`src/lib/warnings.ts`) gets the
+  `warnings` status: shown as `WARNINGS`, never "All checks passed!", exit code stays 0. Opt out per
+  check with `ignoreWarnings: true`. Oxlint's compact output under AI agents comes from agent env vars
+  (`CLAUDECODE`, `AI_AGENT`), not from the pipe.
 - Output style mirrors the original `pr-checks.ts` (bold cyan banner, `> name`, `$ cmd`,
   `PASSED` / `FAILED`, separators, `Results:` summary), rendered with plain `console.log`.
 - `@clack/prompts` is used **only** for the interactive Yes/No fix `confirm` (default yes).

@@ -2,10 +2,11 @@
  * Tiny zero-dependency ANSI color helper. Colors are disabled automatically
  * when `NO_COLOR` is set or stdout is not a TTY.
  */
-const enabled = !process.env.NO_COLOR && (process.env.FORCE_COLOR === "1" || (process.stdout?.isTTY ?? false));
+export const colorsEnabled =
+  !process.env.NO_COLOR && (process.env.FORCE_COLOR === "1" || (process.stdout?.isTTY ?? false));
 
 function wrap(open: number, close: number) {
-  return (text: string): string => (enabled ? `\x1b[${open}m${text}\x1b[${close}m` : text);
+  return (text: string): string => (colorsEnabled ? `\x1b[${open}m${text}\x1b[${close}m` : text);
 }
 
 export const colors = {

@@ -79,6 +79,7 @@ Or wire it into your scripts so `pnpm check` works too:
 - Checks run **in order**. Each `command` runs in your shell with its output streamed live, so failures show up immediately.
 - If a check fails and declares an `onFail`, greenly asks **Yes/No** whether to run the fixer, then continues.
 - Checks marked `optional: true` warn on failure but never fail the overall run.
+- A command that exits `0` but prints warnings (e.g. oxlint's `Found 2 warnings and 0 errors.`, ESLint's `(0 errors, 2 warnings)`) is reported as **WARNINGS**, not passed, so nobody (human or AI agent) mistakes it for a clean run. Set `ignoreWarnings: true` on a check to opt out.
 - greenly exits with code `1` if any non-optional check is still failing, otherwise `0`.
 
 ## Use it in CI
@@ -123,14 +124,15 @@ Real `greenly.config.ts` files that mix the usual checks with project-specific o
 
 ## Config reference
 
-| Field               | Type                                       | Description                                                               |
-| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `name`              | `string?`                                  | Project name shown in the banner.                                         |
-| `checks`            | `Check[]`                                  | Ordered list of checks.                                                   |
-| `checks[].name`     | `string`                                   | Label shown while running and in the summary.                             |
-| `checks[].command`  | `string \| () => void \| Promise<void>`    | Shell command (e.g. `"pnpm tsc --noEmit"`), or a function run in-process. |
-| `checks[].onFail`   | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.                   |
-| `checks[].optional` | `boolean?`                                 | When `true`, a failure warns instead of failing the run.                  |
+| Field                     | Type                                       | Description                                                               |
+| ------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `name`                    | `string?`                                  | Project name shown in the banner.                                         |
+| `checks`                  | `Check[]`                                  | Ordered list of checks.                                                   |
+| `checks[].name`           | `string`                                   | Label shown while running and in the summary.                             |
+| `checks[].command`        | `string \| () => void \| Promise<void>`    | Shell command (e.g. `"pnpm tsc --noEmit"`), or a function run in-process. |
+| `checks[].onFail`         | `string \| (ctx) => void \| Promise<void>` | Fixer run (after a Yes/No prompt) when the check fails.                   |
+| `checks[].optional`       | `boolean?`                                 | When `true`, a failure warns instead of failing the run.                  |
+| `checks[].ignoreWarnings` | `boolean?`                                 | When `true`, warnings in a passing command's output are not reported.     |
 
 `command` can be a function instead of a shell string. It may be async, and it must **throw** (or reject) to mark the check as failed. When it throws, greenly prints only the error's `message` (and its `cause` if present) - not a stack trace - so make the message descriptive:
 

@@ -1,6 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PassThrough } from "node:stream";
+import { type MockInstance, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn<() => void>() }));
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  execSync: vi.fn<() => void>(),
+  spawn: vi.fn<() => void>(),
+}));
 vi.mock("@clack/prompts", () => ({
   intro: vi.fn<() => void>(),
   outro: vi.fn<() => void>(),
@@ -16,23 +21,58 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
-import { execSync } from "node:child_process";
+import { ChildProcess, execSync, spawn } from "node:child_process";
 import { confirm } from "@clack/prompts";
 import { runChecks } from "../src/lib/runner";
 import type { GreenlyConfig } from "../src/lib/types";
 
 const mockExec = vi.mocked(execSync);
+const mockSpawn = vi.mocked(spawn);
 const mockConfirm = vi.mocked(confirm);
+let stdoutWrite: MockInstance;
+let stderrWrite: MockInstance;
 
-// A command "fails" when its text contains "fail".
+// What Node prints to stderr when oxlint/oxfmt load a TS config in a project without "type": "module".
+const NODE_WARNING = [
+  "(node:25260) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/proj/oxlint.config.ts?cache=1790963441080 is not specified and it doesn't parse as CommonJS.",
+  "Reparsing as ES module because module syntax was detected. This incurs a performance overhead.",
+  'To eliminate this warning, add "type": "module" to C:\\proj\\package.json.',
+  "(Use `node --trace-warnings ...` to show where the warning was created)",
+].join("\n");
+
+/** Fake child process that emits the given output, then exits with `code`. */
+function fakeChild(code: number, stdout = "", stderr = ""): ChildProcess {
+  const child = new ChildProcess();
+  const out = new PassThrough();
+  const err = new PassThrough();
+  child.stdout = out;
+  child.stderr = err;
+  setImmediate(() => {
+    if (stdout) out.emit("data", Buffer.from(stdout));
+    if (stderr) err.emit("data", Buffer.from(stderr));
+    child.emit("close", code);
+  });
+  return child;
+}
+
+// A command "fails" when its text contains "fail", and prints lint warnings when it contains "warn".
 beforeEach(() => {
   vi.clearAllMocks();
   // Silence the runner's own banner/output so it doesn't flood the test report.
   vi.spyOn(console, "log").mockImplementation(() => {});
-  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   mockExec.mockImplementation((cmd: string) => {
     if (cmd.includes("fail")) throw new Error(`command failed: ${cmd}`);
     return Buffer.from("");
+  });
+  mockSpawn.mockImplementation((cmd: string) => {
+    if (cmd.includes("fail")) return fakeChild(1, "", "boom\n");
+    if (cmd.includes("stderr-warn")) {
+      return fakeChild(0, "Found 0 warnings and 0 errors.\n", `${NODE_WARNING}\nWARN 2 warnings from a dependency\n`);
+    }
+    if (cmd.includes("warn")) return fakeChild(0, "Found 2 warnings and 0 errors.\n");
+    return fakeChild(0, "Found 0 warnings and 0 errors.\n");
   });
 });
 
@@ -73,6 +113,47 @@ describe("runChecks", () => {
 
   it("does not shell out for a function command", async () => {
     await runChecks(config([{ name: "A", command: () => {} }]), { interactive: false });
+    expect(mockExec).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("streams the command's stdout live", async () => {
+    await runChecks(config([{ name: "A", command: "warn" }]), { interactive: false });
+    expect(stdoutWrite).toHaveBeenCalledWith(Buffer.from("Found 2 warnings and 0 errors.\n"));
+  });
+
+  it("reports warnings (not passed) when a passing command prints warnings", async () => {
+    const result = await runChecks(config([{ name: "Lint", command: "oxlint warn" }]), { interactive: false });
+    expect(result.results[0].status).toBe("warnings");
+    expect(result.warnings).toBe(1);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("never prints 'All checks passed' when a check has warnings", async () => {
+    await runChecks(config([{ name: "Lint", command: "oxlint warn" }]), { interactive: false });
+    const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(logged).not.toContain("All checks passed");
+    expect(logged).toContain("WARNINGS: Lint");
+  });
+
+  it("ignores warnings on stderr (Node / package-manager noise)", async () => {
+    const result = await runChecks(config([{ name: "Lint", command: "stderr-warn" }]), { interactive: false });
+    expect(result.results[0].status).toBe("passed");
+    expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
+  it("passes when warnings are ignored for the check", async () => {
+    const result = await runChecks(config([{ name: "Lint", command: "oxlint warn", ignoreWarnings: true }]), {
+      interactive: false,
+    });
+    expect(result.results[0].status).toBe("passed");
+  });
+
+  it("does not run the fixer for warnings", async () => {
+    await runChecks(config([{ name: "Lint", command: "oxlint warn", onFail: "fixup" }]), {
+      autoFix: true,
+      interactive: false,
+    });
     expect(mockExec).not.toHaveBeenCalled();
   });
 
