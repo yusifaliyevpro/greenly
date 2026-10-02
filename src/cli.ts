@@ -61,6 +61,12 @@ async function main(): Promise<void> {
     console.log(pkg.version);
     return;
   }
+  if (parsed.unknown.length > 0) {
+    console.error(colors.red(`Unknown argument${parsed.unknown.length > 1 ? "s" : ""}: ${parsed.unknown.join(" ")}`));
+    console.error(`Run ${colors.bold("greenly --help")} for usage.`);
+    process.exitCode = 1;
+    return;
+  }
 
   const isTTY = process.stdout.isTTY ?? false;
   const mode = resolveMode(parsed, isTTY);

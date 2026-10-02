@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { CONFIG_EXTENSIONS } from "./constants";
@@ -80,5 +80,16 @@ export async function loadGreenlyConfig(
     }
   }
 
-  return { config, configFile };
+  return { config: { ...config, name: config.name ?? defaultName(cwd) }, configFile };
+}
+
+/** The package.json `name`, falling back to the directory name. */
+function defaultName(cwd: string): string {
+  try {
+    const pkg: unknown = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+    if (pkg && typeof pkg === "object" && "name" in pkg && typeof pkg.name === "string" && pkg.name) return pkg.name;
+  } catch {
+    // missing or unreadable package.json
+  }
+  return basename(resolve(cwd));
 }

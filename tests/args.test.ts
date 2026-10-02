@@ -16,6 +16,11 @@ describe("parseArgs", () => {
     expect(parseArgs([]).autoFix).toBe(false);
   });
 
+  it("collects unknown flags and positionals", () => {
+    expect(parseArgs(["--fxi", "int", "-y"]).unknown).toEqual(["--fxi", "int"]);
+    expect(parseArgs(["-y", "--no-fix", "-h", "-v"]).unknown).toEqual([]);
+  });
+
   it("lets --no-fix override --yes", () => {
     const parsed = parseArgs(["--yes", "--no-fix"]);
     expect(parsed.noFix).toBe(true);

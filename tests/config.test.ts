@@ -1,6 +1,6 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ConfigInvalidError, ConfigNotFoundError, findConfigFile, loadGreenlyConfig } from "../src/lib/config";
 import { CONFIG_EXTENSIONS } from "../src/lib/constants";
@@ -49,6 +49,18 @@ describe("loadGreenlyConfig", () => {
       expect(config.checks[0]).toMatchObject({ name: "echo", command: "echo hi" });
     });
   }
+
+  it("defaults name to the package.json name", async () => {
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "my-pkg" }));
+    await writeFile(join(dir, "greenly.config.json"), JSON.stringify({ checks: [{ name: "a", command: "x" }] }));
+    expect((await loadGreenlyConfig(dir)).config.name).toBe("my-pkg");
+  });
+
+  it("defaults name to the directory name without a package.json name", async () => {
+    await writeFile(join(dir, "package.json"), "{}");
+    await writeFile(join(dir, "greenly.config.json"), JSON.stringify({ checks: [{ name: "a", command: "x" }] }));
+    expect((await loadGreenlyConfig(dir)).config.name).toBe(basename(dir));
+  });
 
   it("throws ConfigNotFoundError when missing", async () => {
     await expect(loadGreenlyConfig(dir)).rejects.toBeInstanceOf(ConfigNotFoundError);

@@ -36,6 +36,11 @@ describe("hasWarnings", () => {
     expect(hasWarnings("(node:1) ExperimentalWarning: Type Stripping is an experimental feature")).toBe(false);
   });
 
+  it("ignores a count of warnings outside a linter summary", () => {
+    expect(hasWarnings(" ✓ tests/parse.test.ts > returns 2 warnings for bad input 1ms")).toBe(false);
+    expect(hasWarnings("Built in 3s, 12 warnings suppressed by config")).toBe(false);
+  });
+
   it("ignores clean output and zero counts", () => {
     expect(hasWarnings("")).toBe(false);
     expect(hasWarnings("Found 0 warnings and 0 errors.\nFinished in 9ms")).toBe(false);

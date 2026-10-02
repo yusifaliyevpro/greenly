@@ -5,7 +5,11 @@ export type ParsedArgs = {
   autoFix: boolean;
   /** `--no-fix` was passed. */
   noFix: boolean;
+  /** Arguments greenly does not recognize (typos like `--fxi` or `int`). */
+  unknown: string[];
 };
+
+const KNOWN_FLAGS = new Set(["-h", "--help", "-v", "--version", "-y", "--yes", "--fix", "--no-fix"]);
 
 export type RunMode = {
   /** Auto-run every fixer without prompting. */
@@ -23,6 +27,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     version: has("-v", "--version"),
     noFix,
     autoFix: !noFix && has("-y", "--yes", "--fix"),
+    unknown: argv.filter((a) => !KNOWN_FLAGS.has(a)),
   };
 }
 

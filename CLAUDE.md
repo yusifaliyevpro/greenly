@@ -53,7 +53,7 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
 import { defineConfig } from "greenly";
 
 export default defineConfig({
-  name: "MyProject", // shown centered in the banner; rules widen for long names
+  name: "MyProject", // banner title (defaults to package.json name, then the dir name); rules widen for long names
   checks: [
     { name: "TypeScript", command: "pnpm tsc --noEmit" },
     { name: "Format", command: "pnpm oxfmt --check", onFail: "pnpm oxfmt" },
@@ -70,7 +70,7 @@ export default defineConfig({
 - The repo dogfoods itself via its own `greenly.config.ts`; that `import "greenly"` resolves through
   the package's own `exports` (Node self-referencing) after a build.
 - `greenly.config.ts` stays minimal (only the `defineConfig` export). Custom function checks live in
-  `scripts/` (e.g. `scripts/checks.ts` exports `checkVersion`) and are imported into the config.
+  `scripts/` (e.g. `scripts/version.ts` exports `checkVersion`) and are imported into the config.
 
 ## Runner behavior (important details)
 
@@ -91,7 +91,7 @@ export default defineConfig({
 ## CLI
 
 `greenly` runs the checks. `greenly init` scaffolds a config interactively.
-Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `-v`/`--version`, `-h`/`--help`.
+Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `-v`/`--version`, `-h`/`--help`. Any other argument is an error (exit 1), so typos never silently run the checks.
 
 ## Commands
 
