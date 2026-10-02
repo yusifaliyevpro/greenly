@@ -1,6 +1,7 @@
 import { execSync, spawn } from "node:child_process";
 import { cancel, confirm, isCancel } from "@clack/prompts";
 import { colors, colorsEnabled } from "./colors";
+import { TailBuffer } from "./tail";
 import type { GreenlyCheck, GreenlyConfig } from "./types";
 import { hasWarnings } from "./warnings";
 
@@ -9,23 +10,29 @@ export type RunOptions = {
   autoFix?: boolean;
   /** Whether interactive prompts are allowed. When `false`, never prompt or fix. */
   interactive?: boolean;
+  /** Warned checks fail the run (exit 1), e.g. `--strict`. */
+  strict?: boolean;
 };
 
-/** `warned`: an optional check failed. `warnings`: the command passed but printed warnings. */
-type CheckStatus = "passed" | "fixed" | "failed" | "warned" | "warnings";
+/** `warned`: not clean, but not blocking (see `WarnReason`). Fails the run only with `strict`. */
+type CheckStatus = "passed" | "fixed" | "failed" | "warned";
+
+/** `warnings`: the command passed but printed warnings. `optional`: an optional check failed. */
+type WarnReason = "warnings" | "optional";
 
 type CheckResult = {
   name: string;
   status: CheckStatus;
+  reason?: WarnReason;
 };
 
 export type RunResult = {
   results: CheckResult[];
   /** Number of non-optional checks that ended up failing. */
   failed: number;
-  /** Number of checks that passed but printed warnings. */
-  warnings: number;
-  /** Exit code: 1 when any non-optional check failed, else 0. */
+  /** Number of warned checks (warnings, or a failed optional check). */
+  warned: number;
+  /** Exit code: 1 when any non-optional check failed (or, with `strict`, any check warned), else 0. */
   exitCode: number;
 };
 
@@ -77,8 +84,8 @@ async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResu
     if (colorsEnabled && env.FORCE_COLOR === undefined) env.FORCE_COLOR = "1";
 
     const child = spawn(command, { shell: true, stdio: ["inherit", "pipe", "pipe"], env });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
+    const stdout = new TailBuffer();
+    const stderr = new TailBuffer();
     child.stdout?.on("data", (chunk: Buffer) => {
       process.stdout.write(chunk);
       stdout.push(chunk);
@@ -87,8 +94,8 @@ async function runCommand(command: GreenlyCheck["command"]): Promise<CommandResu
 
     child.on("error", (error) => resolve({ ok: false, stdout: "", stderr: error.message, error }));
     child.on("close", (code, signal) => {
-      const out = Buffer.concat(stdout).toString("utf8");
-      const err = Buffer.concat(stderr).toString("utf8");
+      const out = stdout.toString();
+      const err = (stderr.truncated ? "[earlier stderr truncated]\n" : "") + stderr.toString();
       if (code === 0) {
         resolve({ ok: true, stdout: out, stderr: err });
         return;
@@ -152,6 +159,15 @@ async function runFix(check: GreenlyCheck, error: unknown): Promise<boolean> {
   }
 }
 
+const REASON_LABEL: Record<WarnReason, string> = { warnings: "warnings", optional: "optional, failed" };
+
+/** Result for a check that ended up failing: warned when optional, else failed. */
+function softFail(check: GreenlyCheck): CheckResult {
+  return check.optional
+    ? { name: check.name, status: "warned", reason: "optional" }
+    : { name: check.name, status: "failed" };
+}
+
 /** Label describing the fixer, for prompts and logs. */
 function fixLabel(check: GreenlyCheck): string {
   return typeof check.onFail === "string" ? `"${check.onFail}"` : "the fix function";
@@ -167,7 +183,7 @@ function fixCommand(check: GreenlyCheck): string {
  * buffered stderr, and fixable checks prompt (via clack) before running.
  */
 export async function runChecks(config: GreenlyConfig, options: RunOptions = {}): Promise<RunResult> {
-  const { autoFix = false, interactive = true } = options;
+  const { autoFix = false, interactive = true, strict = false } = options;
 
   const name = config.name ?? "greenly";
   const width = bannerWidth(name);
@@ -191,7 +207,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
     if (ok && !check.ignoreWarnings && hasWarnings(stdout)) {
       console.log(`\n${colors.yellow(`⚠ WARNINGS: ${check.name}`)}`);
       console.log(colors.yellow(`  Exited successfully but reported warnings.`));
-      results.push({ name: check.name, status: "warnings" });
+      results.push({ name: check.name, status: "warned", reason: "warnings" });
       console.log("\n" + colors.dim(rule("─")) + "\n");
       continue;
     }
@@ -211,7 +227,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       if (check.optional) {
         console.log(colors.yellow(`  ${check.name} is optional, continuing.`));
       }
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
       console.log("\n" + colors.dim(rule("─")) + "\n");
       continue;
     }
@@ -226,8 +242,8 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       if (isCancel(answer)) {
         cancel("Aborted.");
         const failedSoFar = results.filter((r) => r.status === "failed").length;
-        const warningsSoFar = results.filter((r) => r.status === "warnings").length;
-        return { results, failed: failedSoFar, warnings: warningsSoFar, exitCode: 1 };
+        const warnedSoFar = results.filter((r) => r.status === "warned").length;
+        return { results, failed: failedSoFar, warned: warnedSoFar, exitCode: 1 };
       }
       shouldFix = answer;
     }
@@ -238,7 +254,7 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       } else {
         console.log(colors.yellow(`  Skipped fix.`));
       }
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
       console.log("\n" + colors.dim(rule("─")) + "\n");
       continue;
     }
@@ -249,41 +265,44 @@ export async function runChecks(config: GreenlyConfig, options: RunOptions = {})
       results.push({ name: check.name, status: "fixed" });
     } else {
       console.log(`\n${colors.red(`  Auto-fix failed for ${check.name}, please fix manually.`)}\n`);
-      results.push({ name: check.name, status: check.optional ? "warned" : "failed" });
+      results.push(softFail(check));
     }
     console.log(colors.dim(rule("─")) + "\n");
   }
 
   const passed = results.filter((r) => r.status === "passed" || r.status === "fixed").length;
-  const warned = results.filter((r) => r.status === "warned").length;
-  const warningResults = results.filter((r) => r.status === "warnings");
-  const warnings = warningResults.length;
+  const warnedResults = results.filter((r) => r.status === "warned");
+  const warned = warnedResults.length;
   const failedResults = results.filter((r) => r.status === "failed");
   const failed = failedResults.length;
 
   console.log(colors.cyan(colors.bold(rule("═"))));
   const summary =
     colors.green(`${passed} passed`) +
-    (warnings > 0 ? colors.dim(", ") + colors.yellow(`${warnings} with warnings`) : "") +
     (warned > 0 ? colors.dim(", ") + colors.yellow(`${warned} warned`) : "") +
     colors.dim(", ") +
     (failed > 0 ? colors.red(`${failed} failed`) : colors.dim("0 failed"));
   console.log(colors.bold(`   Results: ${summary}`));
 
-  if (warnings > 0) {
-    console.log(`\n${colors.yellow(colors.bold("Checks with warnings:"))}`);
-    for (const r of warningResults) console.log(colors.yellow(`  • ${r.name}`));
+  if (warned > 0) {
+    console.log(`\n${colors.yellow(colors.bold("Warned checks:"))}`);
+    for (const r of warnedResults) {
+      console.log(colors.yellow(`  • ${r.name} (${REASON_LABEL[r.reason ?? "optional"]})`));
+    }
   }
 
   if (failed > 0) {
     console.log(`\n${colors.red(colors.bold("Failed checks:"))}`);
     for (const r of failedResults) console.log(colors.red(`  • ${r.name}`));
     console.log(`\n${colors.red(colors.bold("⚠  Fix the issues above before continuing."))}\n`);
-  } else if (warnings > 0) {
-    console.log(`\n${colors.yellow(colors.bold("⚠  No failures, but some checks reported warnings."))}\n`);
+  } else if (warned > 0 && strict) {
+    console.log(`\n${colors.red(colors.bold("✖  Strict mode: warned checks fail the run."))}\n`);
+  } else if (warned > 0) {
+    console.log(`\n${colors.yellow(colors.bold("⚠  No failures, but some checks warned."))}\n`);
   } else {
     console.log(`\n${colors.green(colors.bold("✔  All checks passed!"))}\n`);
   }
 
-  return { results, failed, warnings, exitCode: failed > 0 ? 1 : 0 };
+  const exitCode = failed > 0 || (strict && warned > 0) ? 1 : 0;
+  return { results, failed, warned, exitCode };
 }

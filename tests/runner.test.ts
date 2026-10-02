@@ -122,10 +122,10 @@ describe("runChecks", () => {
     expect(stdoutWrite).toHaveBeenCalledWith(Buffer.from("Found 2 warnings and 0 errors.\n"));
   });
 
-  it("reports warnings (not passed) when a passing command prints warnings", async () => {
+  it("marks a passing command that prints warnings as warned (not passed)", async () => {
     const result = await runChecks(config([{ name: "Lint", command: "oxlint warn" }]), { interactive: false });
-    expect(result.results[0].status).toBe("warnings");
-    expect(result.warnings).toBe(1);
+    expect(result.results[0]).toEqual({ name: "Lint", status: "warned", reason: "warnings" });
+    expect(result.warned).toBe(1);
     expect(result.exitCode).toBe(0);
   });
 
@@ -134,6 +134,42 @@ describe("runChecks", () => {
     const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
     expect(logged).not.toContain("All checks passed");
     expect(logged).toContain("WARNINGS: Lint");
+  });
+
+  it("lists warned checks with their reason in one summary", async () => {
+    await runChecks(
+      config([
+        { name: "Lint", command: "oxlint warn" },
+        { name: "Build", command: "fail", optional: true },
+      ]),
+      { interactive: false },
+    );
+    const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(logged).toContain("2 warned");
+    expect(logged).toContain("• Lint (warnings)");
+    expect(logged).toContain("• Build (optional, failed)");
+  });
+
+  it("fails the run on warnings with strict", async () => {
+    const result = await runChecks(config([{ name: "Lint", command: "oxlint warn" }]), {
+      interactive: false,
+      strict: true,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Strict mode");
+  });
+
+  it("fails the run on a failed optional check with strict", async () => {
+    const result = await runChecks(config([{ name: "Build", command: "fail", optional: true }]), {
+      interactive: false,
+      strict: true,
+    });
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("passes with strict when every check is clean", async () => {
+    const result = await runChecks(config([{ name: "A", command: "ok" }]), { interactive: false, strict: true });
+    expect(result.exitCode).toBe(0);
   });
 
   it("ignores warnings on stderr (Node / package-manager noise)", async () => {
@@ -169,7 +205,7 @@ describe("runChecks", () => {
       interactive: false,
     });
     expect(result.exitCode).toBe(0);
-    expect(result.results[0].status).toBe("warned");
+    expect(result.results[0]).toEqual({ name: "A", status: "warned", reason: "optional" });
   });
 
   it("auto-runs a string fixer with autoFix and marks it fixed", async () => {

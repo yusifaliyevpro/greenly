@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { CONFIG_EXTENSIONS } from "./constants";
@@ -12,7 +12,7 @@ const CONFIG_BASENAME = "greenly.config";
 export class ConfigNotFoundError extends Error {
   constructor(public cwd: string) {
     super(
-      `No ${CONFIG_BASENAME} file found in ${cwd}.\n` +
+      `No ${CONFIG_BASENAME} file found in ${cwd} or its parent folders.\n` +
         `Create one, e.g. ${CONFIG_BASENAME}.ts:\n\n` +
         `  import { defineConfig } from "greenly";\n\n` +
         `  export default defineConfig({\n` +
@@ -36,15 +36,22 @@ export class ConfigInvalidError extends Error {
 }
 
 /**
- * Find the first `greenly.config.*` file in `cwd`, trying each supported
- * extension in order. Returns the absolute path, or `undefined` if none exists.
+ * Find the nearest `greenly.config.*` file, looking in `cwd` and then each
+ * parent folder (for monorepos), trying each supported extension in order.
+ * Stops at the repository root (a folder with `.git`) or the filesystem root.
+ * Returns the absolute path, or `undefined` if none exists.
  */
 export function findConfigFile(cwd: string = process.cwd()): string | undefined {
-  for (const ext of CONFIG_EXTENSIONS) {
-    const candidate = resolve(cwd, `${CONFIG_BASENAME}.${ext}`);
-    if (existsSync(candidate)) return candidate;
+  let dir = resolve(cwd);
+  while (true) {
+    for (const ext of CONFIG_EXTENSIONS) {
+      const candidate = join(dir, `${CONFIG_BASENAME}.${ext}`);
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir || existsSync(join(dir, ".git"))) return undefined;
+    dir = parent;
   }
-  return undefined;
 }
 
 /**
@@ -61,7 +68,7 @@ export async function loadGreenlyConfig(
 
   // jiti runs .ts/.mts/.cts (and .js/.mjs/.cjs/.json) at runtime and resolves the
   // config's own `import "greenly"` through the installed package.
-  const jiti = createJiti(pathToFileURL(resolve(cwd, "greenly.config")).href);
+  const jiti = createJiti(pathToFileURL(join(dirname(configFile), "greenly.config")).href);
   const config = await jiti.import<GreenlyConfig>(configFile, { default: true });
 
   if (!config || typeof config !== "object") {
@@ -80,16 +87,16 @@ export async function loadGreenlyConfig(
     }
   }
 
-  return { config: { ...config, name: config.name ?? defaultName(cwd) }, configFile };
+  return { config: { ...config, name: config.name ?? defaultName(dirname(configFile)) }, configFile };
 }
 
-/** The package.json `name`, falling back to the directory name. */
-function defaultName(cwd: string): string {
+/** The package.json `name` in `dir`, falling back to the folder name. */
+function defaultName(dir: string): string {
   try {
-    const pkg: unknown = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+    const pkg: unknown = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     if (pkg && typeof pkg === "object" && "name" in pkg && typeof pkg.name === "string" && pkg.name) return pkg.name;
   } catch {
     // missing or unreadable package.json
   }
-  return basename(resolve(cwd));
+  return basename(dir);
 }
