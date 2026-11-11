@@ -1,20 +1,24 @@
-name: PR Checks
+name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
+    branches: [main]
 
 jobs:
-  checks:
+  quality:
     name: Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11.x
+          version: 12.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -25,8 +29,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: NextJS Typegen
+        run: pnpm next typegen
 
       - name: Run checks
         run: pnpm check
