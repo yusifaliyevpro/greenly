@@ -36,7 +36,7 @@ jobs:
         if: steps.check.outputs.version_changed == 'true'
         uses: pnpm/action-setup@v6
         with:
-          version: 11.x
+          version: 12.x
 
       - name: Setup Node.js
         if: steps.check.outputs.version_changed == 'true'
