@@ -103,10 +103,10 @@
     "jiti": "2.7.0"
   },
   "devDependencies": {
-    "@clack/prompts": "1.8.1",
+    "@clack/prompts": "1.9.0",
     "@types/node": "24.19.2",
-    "oxfmt": "0.77.0",
-    "oxlint": "1.92.0",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2006",
     "tsdown": "0.23.7",
     "typescript": "7.0.2",
