@@ -29,8 +29,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: NextJS Typegen
-        run: pnpm next typegen
-
       - name: Run checks
         run: pnpm check
