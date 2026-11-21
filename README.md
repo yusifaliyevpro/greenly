@@ -83,7 +83,18 @@ Or wire it into your scripts so `pnpm check` works too:
   - its command exits `0` but prints warnings (e.g. oxlint's `Found 2 warnings and 0 errors.`, ESLint's `(0 errors, 2 warnings)`), so nobody (human or AI agent) mistakes it for a clean run. Set `ignoreWarnings: true` on a check to opt out.
 - greenly exits with code `1` if any non-optional check is still failing (with `--strict`, also if any check warned), otherwise `0`.
 - In a monorepo, greenly uses the nearest `greenly.config.*` in the current folder or a parent (up to the repository root) and runs the commands from that config's folder.
-- In AI agent terminals (Claude Code, Cursor, Codex, Gemini CLI, Copilot CLI, ...), a short usage box listing `--strict`, `--yes` and the check names is printed after the run. Its last line names `--no-hints`, which hides it on later runs to save the agent's context. Normal terminals and plain CI don't show it.
+- Every run saves each check's output (pass or fail) to `node_modules/.cache/greenly/logs/<check>.log`, plus a `last-run.json` summary. A full run replaces all logs; `greenly oxlint oxfmt` replaces only those two. Read them later with `greenly logs`, without running the checks again.
+- Only one greenly per project runs checks at a time. A second run (another agent, or you) waits for the first one to finish, so two slow test suites never fight over RAM.
+
+### In AI agent terminals
+
+In AI agent terminals (Claude Code, Cursor, Codex, Gemini CLI, Copilot CLI, ...), greenly keeps the output small so agents don't need to `tail` it and run the checks again:
+
+- Output is **compact**: one line per passing check, and the last 40 lines of each failing or warned check. The summary points each problem check at its saved log file (`→ node_modules/.cache/greenly/logs/tests.log (412 lines)`). Use `--verbose` for the full live output.
+- After fixing, `greenly --failed` runs only the checks that failed, warned or did not run last time.
+- A short usage box is printed after the run. Its last line names `-nh` (`--no-hints`), which hides it on later runs to save the agent's context.
+
+Normal terminals and plain CI keep the full streamed output and show no box.
 
 ## Use it in CI
 
@@ -189,7 +200,13 @@ greenly.config.json
 | `-y`, `--yes`, `--fix` | Auto-run every `onFail` fixer without prompting (great for CI / agents).                                                                               |
 | `--no-fix`             | Run all checks, never prompt or fix, just report.                                                                                                      |
 | `--strict`             | Warned checks (warnings, failed optional checks) also exit `1`.                                                                                        |
-| `--no-hints`           | Don't print the usage box shown in AI agent terminals.                                                                                                 |
+| `--failed`             | Run only the checks that failed, warned or did not run in the last run.                                                                                |
+| `--bail`               | Stop at the first failed check. The rest are reported as not run.                                                                                      |
+| `--json`               | Print only a JSON report (no prompts, no live output).                                                                                                 |
+| `--verbose`            | Stream the full output in AI agent terminals too.                                                                                                      |
+| `-nh`, `--no-hints`    | Don't print the usage box shown in AI agent terminals.                                                                                                 |
+| `greenly logs`         | List the last run's checks with status, duration and log file. Prints no log contents.                                                                 |
+| `greenly logs <check>` | Print the saved output of the named checks. `--failed` prints all failed, warned and not-run ones; `--json` prints the summary file.                   |
 | `-v`, `--version`      | Print the version.                                                                                                                                     |
 | `-h`, `--help`         | Show help.                                                                                                                                             |
 

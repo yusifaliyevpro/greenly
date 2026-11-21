@@ -5,8 +5,8 @@ export function checkSlug(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
-/** CLI names taken by subcommands (`greenly init`), so a check with one can't be selected by name. */
-export const RESERVED_NAMES: ReadonlySet<string> = new Set(["init"]);
+/** CLI names taken by subcommands (`greenly init`, `greenly logs`), so a check with one can't be selected by name. */
+export const RESERVED_NAMES: ReadonlySet<string> = new Set(["init", "logs"]);
 
 /** Checks whose CLI name collides with a subcommand. */
 export function reservedChecks(checks: GreenlyCheck[]): GreenlyCheck[] {

@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { type MockInstance, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +25,7 @@ vi.mock("@clack/prompts", () => ({
 
 import { ChildProcess, execSync, spawn } from "node:child_process";
 import { confirm } from "@clack/prompts";
+import { LogStore } from "../src/lib/logs";
 import { runChecks } from "../src/lib/runner";
 import type { GreenlyConfig } from "../src/lib/types";
 
@@ -124,7 +127,7 @@ describe("runChecks", () => {
 
   it("marks a passing command that prints warnings as warned (not passed)", async () => {
     const result = await runChecks(config([{ name: "Lint", command: "oxlint warn" }]), { interactive: false });
-    expect(result.results[0]).toEqual({ name: "Lint", status: "warned", reason: "warnings" });
+    expect(result.results[0]).toMatchObject({ name: "Lint", status: "warned", reason: "warnings" });
     expect(result.warned).toBe(1);
     expect(result.exitCode).toBe(0);
   });
@@ -146,7 +149,8 @@ describe("runChecks", () => {
     );
     const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
     expect(logged).toContain("2 warned");
-    expect(logged).toContain("• Lint (warnings)");
+    expect(logged).toContain("• Lint\n");
+    expect(logged).not.toContain("(warnings)");
     expect(logged).toContain("• Build (optional, failed)");
   });
 
@@ -205,7 +209,7 @@ describe("runChecks", () => {
       interactive: false,
     });
     expect(result.exitCode).toBe(0);
-    expect(result.results[0]).toEqual({ name: "A", status: "warned", reason: "optional" });
+    expect(result.results[0]).toMatchObject({ name: "A", status: "warned", reason: "optional" });
   });
 
   it("auto-runs a string fixer with autoFix and marks it fixed", async () => {
@@ -300,5 +304,92 @@ describe("runChecks", () => {
     });
     expect(mockConfirm).not.toHaveBeenCalled();
     expect(result.results[0].status).toBe("fixed");
+  });
+
+  it("stops at the first failure with bail and reports the rest as not run", async () => {
+    const result = await runChecks(
+      config([
+        { name: "A", command: "fail" },
+        { name: "B", command: "ok" },
+      ]),
+      { interactive: false, bail: true },
+    );
+    expect(mockSpawn).toHaveBeenCalledOnce();
+    expect(result.results.map((r) => r.status)).toEqual(["failed", "not-run"]);
+    expect(result.notRun).toBe(1);
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("1 not run");
+  });
+
+  it("does not bail on a failed optional check", async () => {
+    const result = await runChecks(
+      config([
+        { name: "A", command: "fail", optional: true },
+        { name: "B", command: "ok" },
+      ]),
+      { interactive: false, bail: true },
+    );
+    expect(result.results.map((r) => r.status)).toEqual(["warned", "passed"]);
+  });
+
+  it("records each check's duration", async () => {
+    const result = await runChecks(config([{ name: "A", command: "ok" }]), { interactive: false });
+    expect(result.results[0].durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  describe("compact output", () => {
+    it("does not stream output and prints one line for a passing check", async () => {
+      await runChecks(config([{ name: "A", command: "ok" }]), { interactive: false, output: "compact" });
+      expect(stdoutWrite).not.toHaveBeenCalled();
+      const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(logged).toContain("✔ A");
+      expect(logged).not.toContain("Found 0 warnings");
+    });
+
+    it("prints the failing output, stderr included", async () => {
+      await runChecks(config([{ name: "A", command: "fail" }]), { interactive: false, output: "compact" });
+      const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(logged).toContain("✖ A");
+      expect(logged).toContain("boom");
+      expect(stderrWrite).not.toHaveBeenCalled();
+    });
+
+    it("shows only the last lines of long output", async () => {
+      const long = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
+      mockSpawn.mockImplementation(() => fakeChild(1, long));
+      await runChecks(config([{ name: "A", command: "x" }]), { interactive: false, output: "compact" });
+      const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(logged).toContain("line 100");
+      expect(logged).not.toContain("line 60\n");
+      expect(logged).toContain("[60 earlier lines not shown]");
+    });
+  });
+
+  it("prints only a JSON report with json output", async () => {
+    const result = await runChecks(
+      config([
+        { name: "Lint", command: "oxlint warn" },
+        { name: "Build", command: "fail" },
+      ]),
+      { interactive: false, output: "json" },
+    );
+    expect(vi.mocked(console.log)).not.toHaveBeenCalled();
+    const written = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
+    const report: { exitCode: number; checks: { slug: string; status: string }[] } = JSON.parse(written);
+    expect(report.exitCode).toBe(result.exitCode);
+    expect(report.checks.map((c) => [c.slug, c.status])).toEqual([
+      ["lint", "warned"],
+      ["build", "failed"],
+    ]);
+  });
+
+  it("saves combined stdout and stderr to the log store", async () => {
+    const logs = new LogStore(join(tmpdir(), "greenly-unused"));
+    // No begin(): record() finds no entry and writes nothing, but the call is still observed.
+    const record = vi.spyOn(logs, "record");
+    await runChecks(config([{ name: "A", command: "stderr-warn" }]), { interactive: false, logs });
+    const [, input] = record.mock.calls[0];
+    expect(input.status).toBe("passed");
+    expect(input.output).toContain("Found 0 warnings");
+    expect(input.output).toContain("MODULE_TYPELESS_PACKAGE_JSON");
   });
 });

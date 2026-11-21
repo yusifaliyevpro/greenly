@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Guidance for working in this repo.
 
@@ -34,6 +34,13 @@ Only `index.ts` and `cli.ts` live at the root of `src/`; everything else is in `
   `pnpm check` / `npm run check --`), `agentHints` (the usage box printed after a run in AI agent terminals only).
   Box text states facts, no directives.
 - `src/lib/tail.ts` - `TailBuffer`: captured stdout/stderr keep only the last 1 MiB.
+- `src/lib/logs.ts` - `LogStore`: saves each check's last output to `node_modules/.cache/greenly/logs/<slug>.log`
+  plus a `last-run.json` manifest (atomic writes, best-effort, never breaks a run). `begin(all, selected, full)`:
+  a full run replaces every log, a partial run only the selected ones. `needsRerun` feeds `--failed`.
+- `src/lib/show-logs.ts` - `greenly logs` (summary, named logs, `--failed`, `--json`). No `--tail` on purpose:
+  agents pipe through their own shell tools.
+- `src/lib/lock.ts` - `acquireLock`: `node_modules/.cache/greenly/lock` holds the pid of the run executing
+  checks; a second run waits, a dead pid's lock is taken over.
 - `src/lib/colors.ts` - tiny zero-dep ANSI helper (respects `NO_COLOR` / TTY).
 - `src/lib/utils.ts` - package-manager helpers shared by `cli.ts` and `init.ts`: `PackageManager`,
   `detectPackageManager`, `detectLockfiles`, `installCommand` (the "install latest" / update command).
@@ -96,16 +103,23 @@ export default defineConfig({
   `PASSED` / `FAILED`, separators, `Results:` summary), rendered with plain `console.log`.
 - `@clack/prompts` is used **only** for the interactive Yes/No fix `confirm` (default yes).
 - Non-interactive by default when `process.stdout.isTTY` is false (CI/agents never hang).
+- `OutputMode`: `stream` (normal terminals, CI), `compact` (AI agent terminals unless `--verbose`: no live
+  output, one line per passing check, the last `TAIL_LINES` of failing/warned output, log paths in the
+  summary), `json` (only a JSON report on stdout; fixers' output is captured, never printed).
+- Every run saves output (stdout + stderr in arrival order, ANSI stripped) through `LogStore`, and only one
+  run per project executes checks at a time (`acquireLock`).
 
 ## CLI
 
-`greenly` runs the checks. `greenly init` scaffolds a config interactively.
+`greenly` runs the checks. `greenly init` scaffolds a config interactively. `greenly logs` prints saved output.
 Flags: `-y` / `--yes` / `--fix` (auto-run fixers), `--no-fix` (report only), `--strict` (warned checks
-exit 1), `-v`/`--version`, `-h`/`--help`. Positionals select checks by slug (`greenly oxlint tests`).
+exit 1), `--failed` (rerun failed/warned/not-run checks from the manifest), `--bail` (stop at the first
+failure, rest are `not-run`), `--json`, `--verbose`, `-nh`/`--no-hints`, `-v`/`--version`, `-h`/`--help`.
+Positionals select checks by slug (`greenly oxlint tests`).
 Unknown flags or check names are an error (exit 1), so typos never silently run the checks. Because
-`init` is a subcommand, a check named "init" can't be selected by name; the CLI prints a rename notice for it (`reservedChecks`).
+`init` and `logs` are subcommands, checks with those names can't be selected by name; the CLI prints a rename notice (`reservedChecks`).
 In AI agent terminals (`isAgentEnv`) a usage box follows the summary; never in normal terminals or plain CI.
-Its last line names `--no-hints`, which hides it, so an agent sees it once per session.
+Its last line names `-nh` (`--no-hints`), which hides it, so an agent sees it once per session.
 
 ## Commands
 
