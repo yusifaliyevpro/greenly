@@ -45,7 +45,18 @@ describe("agentHints", () => {
     expect(text).toContain("pnpm check --yes");
     expect(text).toContain("Available check names: typescript, oxlint, tests");
     // The last line names the flag that hides the box, so agents can skip it on later runs.
-    expect(text.trimEnd().split("\n").at(-2)).toContain("pnpm check --no-hints");
+    expect(text.trimEnd().split("\n").at(-2)).toContain("pnpm check -nh (--no-hints)");
     expect(text).not.toMatch(/\b(should|must|please)\b/i);
+  });
+});
+
+describe("agentHints rows", () => {
+  it("lists --failed, logs, --bail, --verbose and the log folder", () => {
+    const text = stripVTControlCharacters(agentHints("pnpm check", ["oxlint"]));
+    expect(text).toContain("pnpm check --failed");
+    expect(text).toContain("pnpm check logs [check_name]...");
+    expect(text).toContain("pnpm check --bail");
+    expect(text).toContain("pnpm check --verbose");
+    expect(text).toContain("node_modules/.cache/greenly/logs/<check_name>.log");
   });
 });

@@ -38,3 +38,9 @@ describe("selectChecks", () => {
     expect(selectChecks(checks, ["oxlint", "lnit"]).unknown).toEqual(["lnit"]);
   });
 });
+
+describe("reserved names", () => {
+  it("reserves the logs subcommand", () => {
+    expect(reservedChecks([{ name: "Logs", command: "x" }]).map((c) => c.name)).toEqual(["Logs"]);
+  });
+});

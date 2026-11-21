@@ -38,12 +38,16 @@ export function invocation(env: NodeJS.ProcessEnv, lockfiles: readonly string[])
 /** Usage box printed after a run in AI agent terminals. Ends with the flag that hides it, to save context. */
 export function agentHints(command: string, slugs: readonly string[]): string {
   const rows: [string, string][] = [
-    [`${command} --strict`, "Warned checks (warnings, failed optional checks) also exit 1."],
     [
       `${command} <check_name>...`,
       `Runs only the named checks, as many as needed (e.g. ${command} ${slugs.slice(0, 3).join(" ")}).`,
     ],
+    [`${command} --failed`, "Runs only the checks that failed, warned or did not run last time."],
+    [`${command} logs [check_name]...`, "Prints the saved output of the last run, without re-running checks."],
+    [`${command} --bail`, "Stops at the first failed check."],
+    [`${command} --strict`, "Warned checks (warnings, failed optional checks) also exit 1."],
     [`${command} --yes`, "Runs onFail fixers without prompting."],
+    [`${command} --verbose`, "Streams full output instead of the compact view."],
   ];
   const width = Math.max(...rows.map(([cmd]) => cmd.length));
   const bar = colors.dim("│");
@@ -51,7 +55,8 @@ export function agentHints(command: string, slugs: readonly string[]): string {
     `${colors.dim("┌")}  ${colors.bold("greenly usage for AI agents")}`,
     ...rows.map(([cmd, text]) => `${bar}  ${colors.cyan(cmd.padEnd(width))}  ${text}`),
     `${bar}  Available check names: ${slugs.join(", ")}`,
-    `${bar}  Use ${colors.cyan(`${command} --no-hints`)} to not print this box again.`,
+    `${bar}  Each check's last output: node_modules/.cache/greenly/logs/<check_name>.log`,
+    `${bar}  Use ${colors.cyan(`${command} -nh`)} (--no-hints) to not print this box again.`,
     colors.dim("└"),
   ].join("\n");
 }

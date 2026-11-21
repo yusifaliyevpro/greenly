@@ -17,4 +17,4 @@
 
 - [ ] Run `pnpm check`
 - [ ] Added or updated tests where relevant
-- [ ] Updated docs (README / CLAUDE.md) where relevant
+- [ ] Updated docs (README / AGENTS.md) where relevant

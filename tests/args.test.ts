@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseArgs, resolveMode } from "../src/lib/args";
+import { parseArgs, parseLogsArgs, resolveMode } from "../src/lib/args";
 
 describe("parseArgs", () => {
   it("detects help and version", () => {
@@ -46,19 +46,77 @@ describe("parseArgs", () => {
 
 describe("resolveMode", () => {
   it("prompts only on a TTY with no fix flags", () => {
-    expect(resolveMode(parseArgs([]), true)).toEqual({ autoFix: false, interactive: true, strict: false });
-    expect(resolveMode(parseArgs([]), false)).toEqual({ autoFix: false, interactive: false, strict: false });
+    expect(resolveMode(parseArgs([]), true)).toEqual({
+      autoFix: false,
+      interactive: true,
+      strict: false,
+      bail: false,
+      output: "stream",
+    });
+    expect(resolveMode(parseArgs([]), false)).toEqual({
+      autoFix: false,
+      interactive: false,
+      strict: false,
+      bail: false,
+      output: "stream",
+    });
   });
 
   it("never prompts when autoFix is set", () => {
-    expect(resolveMode(parseArgs(["-y"]), true)).toEqual({ autoFix: true, interactive: false, strict: false });
+    expect(resolveMode(parseArgs(["-y"]), true)).toEqual({
+      autoFix: true,
+      interactive: false,
+      strict: false,
+      bail: false,
+      output: "stream",
+    });
   });
 
   it("never prompts or fixes with --no-fix", () => {
-    expect(resolveMode(parseArgs(["--no-fix"]), true)).toEqual({ autoFix: false, interactive: false, strict: false });
+    expect(resolveMode(parseArgs(["--no-fix"]), true)).toEqual({
+      autoFix: false,
+      interactive: false,
+      strict: false,
+      bail: false,
+      output: "stream",
+    });
   });
 
   it("passes --strict through", () => {
     expect(resolveMode(parseArgs(["--strict"]), false).strict).toBe(true);
+  });
+});
+
+describe("new run flags", () => {
+  it("parses --bail, --failed, --json, --verbose and -nh", () => {
+    const parsed = parseArgs(["--bail", "--failed", "--json", "--verbose", "-nh"]);
+    expect(parsed).toMatchObject({ bail: true, failed: true, json: true, verbose: true, hints: false });
+    expect(parsed.unknown).toEqual([]);
+  });
+
+  it("uses compact output for agents unless --verbose", () => {
+    expect(resolveMode(parseArgs([]), false, true).output).toBe("compact");
+    expect(resolveMode(parseArgs(["--verbose"]), false, true).output).toBe("stream");
+    expect(resolveMode(parseArgs([]), false, false).output).toBe("stream");
+  });
+
+  it("never prompts with --json", () => {
+    expect(resolveMode(parseArgs(["--json"]), true, true)).toMatchObject({ output: "json", interactive: false });
+  });
+});
+
+describe("parseLogsArgs", () => {
+  it("parses names and flags", () => {
+    expect(parseLogsArgs(["oxlint", "--failed", "--json"])).toEqual({
+      help: false,
+      failed: true,
+      json: true,
+      names: ["oxlint"],
+      unknown: [],
+    });
+  });
+
+  it("rejects unknown flags", () => {
+    expect(parseLogsArgs(["--tail", "5"]).unknown).toEqual(["--tail"]);
   });
 });
