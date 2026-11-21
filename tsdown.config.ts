@@ -1,10 +1,10 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig([
-  // Library entry: defineConfig + types (dual ESM/CJS with declarations).
+  // Library entry: defineConfig + types. ESM only: Node >=22.12 can require() it.
   {
     entry: ["src/index.ts"],
-    format: ["esm", "cjs"],
+    format: "esm",
     dts: true,
     clean: true,
     platform: "node",
