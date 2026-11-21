@@ -124,7 +124,7 @@ Its last line names `-nh` (`--no-hints`), which hides it, so an agent sees it on
 ## Commands
 
 ```bash
-pnpm build        # tsdown: dual ESM/CJS library + single-file ESM bin (dist/cli.js)
+pnpm build        # tsdown: ESM-only library (require() works via Node 22 require(esm)) + single-file ESM bin (dist/cli.js)
 pnpm test         # vitest run
 pnpm check        # dogfood greenly on itself (node dist/cli.js; needs a build first) - Run it directly to check all.
 pnpm fmt          # oxfmt
