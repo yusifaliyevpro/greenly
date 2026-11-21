@@ -1,6 +1,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { stripVTControlCharacters } from "node:util";
 import { type MockInstance, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (importOriginal) => ({
@@ -147,7 +148,8 @@ describe("runChecks", () => {
       ]),
       { interactive: false },
     );
-    const logged = vi.mocked(console.log).mock.calls.flat().join("\n");
+    // Strip colors: with FORCE_COLOR a reset code sits between "Lint" and the newline.
+    const logged = stripVTControlCharacters(vi.mocked(console.log).mock.calls.flat().join("\n"));
     expect(logged).toContain("2 warned");
     expect(logged).toContain("• Lint\n");
     expect(logged).not.toContain("(warnings)");
